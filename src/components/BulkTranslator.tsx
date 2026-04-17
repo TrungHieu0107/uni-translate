@@ -1,0 +1,419 @@
+import { useState, useEffect, useRef } from "react";
+import { Copy, ArrowRightLeft, Languages, Check, Loader2, Plus, Trash2, GripHorizontal, RefreshCw } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
+
+interface TranslateSegment {
+  text: string;
+  match_id: number | null;
+}
+
+interface BulkTranslateResponse {
+  input_segments: TranslateSegment[];
+  output_segments: TranslateSegment[];
+  output_text: string;
+}
+
+interface Session {
+  id: string;
+  name: string;
+  input: string;
+  output: string;
+  inputSegments: TranslateSegment[];
+  outputSegments: TranslateSegment[];
+  direction: "en_to_ja" | "ja_to_en";
+  height: number;
+  isTranslating: boolean;
+  copied: boolean;
+  isInputFocused: boolean;
+}
+
+export function BulkTranslator({ disabled }: { disabled: boolean }) {
+  const [sessions, setSessions] = useState<Session[]>(() => {
+    try {
+      const saved = localStorage.getItem("bulk_translator_sessions");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map(s => ({ 
+            ...s, 
+            isTranslating: false, 
+            copied: false, 
+            isInputFocused: false,
+            inputSegments: s.inputSegments || [{ text: s.input, match_id: null }],
+            outputSegments: s.outputSegments || [{ text: s.output, match_id: null }]
+          }));
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to restore bulk translator sessions");
+    }
+    return [
+      {
+        id: "1",
+        name: "Translation 1",
+        input: "",
+        output: "",
+        direction: "en_to_ja",
+        height: 250,
+        isTranslating: false,
+        copied: false,
+        isInputFocused: false,
+        inputSegments: [],
+        outputSegments: [],
+      },
+    ];
+  });
+
+  useEffect(() => {
+    const toSave = sessions.map(s => {
+      const { isTranslating, copied, isInputFocused, ...rest } = s;
+      return rest;
+    });
+    localStorage.setItem("bulk_translator_sessions", JSON.stringify(toSave));
+  }, [sessions]);
+
+  const [hoverMatchId, setHoverMatchId] = useState<number | null>(null);
+
+  const [resizingId, setResizingId] = useState<string | null>(null);
+  const resizeStartY = useRef<number>(0);
+  const resizeStartHeight = useRef<number>(0);
+  const timersRef = useRef<{ [key: string]: number }>({});
+
+  const addSession = () => {
+    const newId = Date.now().toString();
+    const newSession: Session = {
+      id: newId,
+      name: `Translation ${sessions.length + 1}`,
+      input: "",
+      output: "",
+      direction: sessions[sessions.length - 1]?.direction || "en_to_ja",
+      height: 250,
+      isTranslating: false,
+      copied: false,
+      isInputFocused: false,
+      inputSegments: [],
+      outputSegments: [],
+    };
+    setSessions([...sessions, newSession]);
+  };
+
+  const removeSession = (id: string) => {
+    if (timersRef.current[id]) {
+      window.clearTimeout(timersRef.current[id]);
+      delete timersRef.current[id];
+    }
+    if (sessions.length <= 1) {
+      updateSession(id, { input: "", output: "" });
+      return;
+    }
+    setSessions(sessions.filter((s) => s.id !== id));
+  };
+
+  const updateSession = (id: string, update: Partial<Session>) => {
+    setSessions((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, ...update } : s))
+    );
+  };
+
+  const toggleDirection = (id: string) => {
+    const session = sessions.find(s => s.id === id);
+    if (!session) return;
+    updateSession(id, { 
+      direction: session.direction === "en_to_ja" ? "ja_to_en" : "en_to_ja" 
+    });
+  };
+
+  const handleTranslate = async (id: string) => {
+    const session = sessions.find((s) => s.id === id);
+    if (!session || !session.input.trim()) return;
+
+    try {
+      updateSession(id, { isTranslating: true });
+      const result = await invoke<BulkTranslateResponse>("bulk_translate", {
+        text: session.input,
+        direction: session.direction,
+      });
+      updateSession(id, { 
+        output: result.output_text,
+        inputSegments: result.input_segments,
+        outputSegments: result.output_segments
+      });
+    } catch (err) {
+      console.error("Translation failed:", err);
+    } finally {
+      updateSession(id, { isTranslating: false });
+    }
+  };
+
+  const handleCopy = (id: string) => {
+    const session = sessions.find((s) => s.id === id);
+    if (!session || !session.output) return;
+    navigator.clipboard.writeText(session.output);
+    updateSession(id, { copied: true });
+    setTimeout(() => updateSession(id, { copied: false }), 2000);
+  };
+
+  const startResize = (id: string, startHeight: number, clientY: number) => {
+    setResizingId(id);
+    resizeStartY.current = clientY;
+    resizeStartHeight.current = startHeight;
+    document.body.style.cursor = 'ns-resize';
+    document.body.style.userSelect = 'none';
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (resizingId) {
+        const deltaY = e.clientY - resizeStartY.current;
+        const newHeight = Math.max(100, Math.min(1000, resizeStartHeight.current + deltaY));
+        updateSession(resizingId, { height: newHeight });
+      }
+    };
+
+    const handleMouseUp = () => {
+      if (resizingId) {
+        setResizingId(null);
+        document.body.style.cursor = 'default';
+        document.body.style.userSelect = 'auto';
+      }
+    };
+
+    if (resizingId) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [resizingId]);
+
+  useEffect(() => {
+    sessions.forEach((session) => {
+      if (!session.input.trim()) {
+        if (session.output !== "" || session.outputSegments.length > 0) {
+          updateSession(session.id, { 
+            output: "", 
+            inputSegments: [], 
+            outputSegments: [] 
+          });
+        }
+        return;
+      }
+      if (timersRef.current[session.id]) {
+        window.clearTimeout(timersRef.current[session.id]);
+      }
+      timersRef.current[session.id] = window.setTimeout(() => {
+        handleTranslate(session.id);
+      }, 500);
+    });
+
+    return () => {
+      Object.values(timersRef.current).forEach(window.clearTimeout);
+    };
+  }, [sessions.map(s => s.input).join('|'), sessions.map(s => s.direction).join('|')]);
+
+  const SegmentedViewer = ({ 
+    segments, 
+    className, 
+    placeholder,
+    onManualClick
+  }: { 
+    segments: TranslateSegment[], 
+    className?: string, 
+    placeholder?: string,
+    onManualClick?: () => void
+  }) => {
+    if (segments.length === 0 && placeholder) {
+      return (
+        <div className={`p-4 text-drac-text-secondary italic text-sm ${className}`} onClick={onManualClick}>
+          {placeholder}
+        </div>
+      );
+    }
+
+    return (
+      <div 
+        className={`p-3 font-mono text-sm leading-relaxed whitespace-pre-wrap break-words overflow-y-auto scrollbar-dracula ${className}`}
+        onClick={onManualClick}
+      >
+        {segments.map((seg, i) => (
+          <span
+            key={i}
+            className={`transition-all duration-150 rounded ${
+              seg.match_id !== null 
+                ? "text-drac-accent font-bold cursor-help" 
+                : ""
+            } ${
+              hoverMatchId !== null && seg.match_id === hoverMatchId 
+                ? "bg-drac-accent/30 text-drac-accent-hover ring-1 ring-drac-accent/50" 
+                : ""
+            }`}
+            onMouseEnter={() => {
+              if (seg.match_id !== null) setHoverMatchId(seg.match_id);
+            }}
+            onMouseLeave={() => {
+              if (seg.match_id !== null) setHoverMatchId(null);
+            }}
+          >
+            {seg.text}
+          </span>
+        ))}
+      </div>
+    );
+  };
+
+  return (
+    <div className="flex flex-col h-full w-full bg-drac-bg-primary text-drac-text-primary overflow-hidden">
+      <div className="flex-1 overflow-y-auto scrollbar-dracula p-6 relative">
+        <div className="flex flex-col gap-6 pb-32 w-full pt-4">
+
+          {sessions.map((session, index) => (
+            <div key={session.id} className="flex flex-col bg-drac-bg-secondary rounded-xl border border-drac-border shadow-lg animate-slide-up relative group overflow-hidden">
+              
+              {/* Overlay Index */}
+              <div className="absolute top-4 left-4 z-10 flex items-center gap-2 pointer-events-none">
+                <span className="w-6 h-6 rounded-full bg-drac-bg-tertiary flex items-center justify-center text-[10px] font-bold text-drac-text-secondary border border-drac-border shadow-sm">
+                  {index + 1}
+                </span>
+              </div>
+              
+              {/* High Density Editor Pane */}
+              <div className="flex flex-col border-t border-transparent">
+                <div 
+                  className="flex gap-2 p-3 pl-12" // Padding left to clear the index circle
+                  style={{ height: `${session.height}px` }}
+                >
+                  {/* Input Box */}
+                  <div className="flex-1 flex flex-col bg-drac-bg-primary rounded-lg border border-drac-border overflow-hidden shadow-inner focus-within:border-drac-accent/50 transition-colors">
+                    <div className="bg-drac-bg-tertiary px-3 py-1.5 flex justify-between items-center border-b border-drac-border/50">
+                      <button 
+                        className="text-[10px] font-bold uppercase tracking-widest text-drac-accent hover:text-drac-accent-hover flex items-center gap-1 transition-colors"
+                        onClick={() => toggleDirection(session.id)}
+                        title="Click to toggle language"
+                      >
+                        {session.direction === "en_to_ja" ? "Source: English" : "Source: Japanese"}
+                        <RefreshCw size={10} className="opacity-50" />
+                      </button>
+                      
+                      <button 
+                        className={`p-1 rounded hover:bg-drac-bg-secondary transition-colors ${session.isTranslating ? 'animate-spin text-drac-accent' : 'text-drac-success'}`}
+                        onClick={() => handleTranslate(session.id)}
+                        disabled={disabled || session.isTranslating || !session.input.trim()}
+                        title="Force translate now"
+                      >
+                        {session.isTranslating ? <Loader2 size={12} /> : <Languages size={12} />}
+                      </button>
+                    </div>
+                    {session.isInputFocused || !session.inputSegments.length || session.inputSegments.length <= 1 ? (
+                      <textarea
+                        className="flex-1 w-full bg-transparent p-3 resize-none outline-none font-mono text-sm leading-relaxed scrollbar-dracula"
+                        placeholder={session.direction === "en_to_ja" ? "Paste English text..." : "Paste Japanese text..."}
+                        value={session.input}
+                        onChange={(e) => updateSession(session.id, { input: e.target.value })}
+                        onFocus={() => updateSession(session.id, { isInputFocused: true })}
+                        onBlur={() => updateSession(session.id, { isInputFocused: false })}
+                        disabled={disabled}
+                        spellCheck={false}
+                        autoFocus={session.isInputFocused}
+                      />
+                    ) : (
+                      <SegmentedViewer 
+                        segments={session.inputSegments} 
+                        className="flex-1 cursor-text"
+                        onManualClick={() => updateSession(session.id, { isInputFocused: true })}
+                      />
+                    )}
+                  </div>
+
+                  {/* Middle Controls */}
+                  <div className="flex flex-col items-center justify-center gap-2 text-drac-border/50 w-8">
+                    <button 
+                      className="p-1.5 rounded-full hover:bg-drac-bg-tertiary text-drac-text-secondary hover:text-drac-accent transition-all active:rotate-180"
+                      onClick={() => toggleDirection(session.id)}
+                      title="Swap Languages"
+                    >
+                      <ArrowRightLeft size={16} />
+                    </button>
+                  </div>
+
+                  {/* Output Box */}
+                  <div className="flex-1 flex flex-col bg-drac-bg-primary rounded-lg border border-drac-border overflow-hidden shadow-inner relative">
+                    <div className="bg-drac-bg-tertiary px-3 py-1.5 flex justify-between items-center border-b border-drac-border/50">
+                      <button 
+                        className="text-[10px] font-bold uppercase tracking-widest text-drac-text-secondary hover:text-drac-text-primary flex items-center gap-1 transition-colors"
+                        onClick={() => toggleDirection(session.id)}
+                        title="Click to toggle language"
+                      >
+                        {session.direction === "en_to_ja" ? "Target: Japanese" : "Target: English"}
+                        <RefreshCw size={10} className="opacity-50" />
+                      </button>
+                    </div>
+                    <SegmentedViewer 
+                      segments={session.outputSegments}
+                      className="flex-1"
+                      placeholder="Translation will appear here..."
+                    />
+                  </div>
+                </div>
+
+                {/* Footer Action Bar */}
+                <div className="flex items-center justify-between px-3 py-2 bg-drac-bg-tertiary/30 border-t border-drac-border/50">
+                  <div className="text-[10px] text-drac-text-secondary font-medium">
+                    {session.input.length > 0 && `${session.input.length} characters`}
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    {session.output && (
+                      <button
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all active:scale-95 ${
+                          session.copied 
+                            ? "bg-drac-success/20 text-drac-success border border-drac-success/30" 
+                            : "bg-drac-bg-primary text-drac-text-primary border border-drac-border hover:border-drac-accent hover:text-drac-accent shadow-sm"
+                        }`}
+                        onClick={() => handleCopy(session.id)}
+                      >
+                        {session.copied ? <Check size={14} /> : <Copy size={14} />}
+                        {session.copied ? "COPIED" : "COPY RESULT"}
+                      </button>
+                    )}
+                    
+                    <button
+                      className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold bg-drac-bg-primary text-drac-text-secondary border border-drac-border hover:border-drac-danger hover:text-drac-danger hover:bg-drac-danger-bg transition-all active:scale-95 shadow-sm"
+                      onClick={() => removeSession(session.id)}
+                      title="Remove Section"
+                    >
+                      <Trash2 size={14} />
+                      REMOVE
+                    </button>
+                  </div>
+                </div>
+
+                {/* Resize Handle at the very bottom */}
+                <div 
+                  className="h-1 bg-drac-bg-tertiary hover:bg-drac-accent/50 cursor-ns-resize flex items-center justify-center transition-colors group/handle active:bg-drac-accent"
+                  onMouseDown={(e) => startResize(session.id, session.height, e.clientY)}
+                  title="Drag to resize height"
+                >
+                  <GripHorizontal size={12} className="text-drac-border opacity-0 group-hover/handle:opacity-100 transition-opacity" />
+                </div>
+              </div>
+            </div>
+          ))}
+
+          {/* Large Add Button at bottom */}
+          <button
+            onClick={addSession}
+            className="w-full py-5 rounded-xl border-2 border-dashed border-drac-border hover:border-drac-accent hover:bg-drac-bg-secondary flex flex-col items-center justify-center gap-2 group transition-all shrink-0 active:scale-[0.99]"
+          >
+            <div className="w-10 h-10 rounded-full bg-drac-bg-secondary flex items-center justify-center border border-drac-border group-hover:bg-drac-accent group-hover:text-drac-text-inverse transition-colors">
+              <Plus size={20} />
+            </div>
+            <span className="text-xs font-bold text-drac-text-secondary group-hover:text-drac-accent">Add Another Translation Section</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

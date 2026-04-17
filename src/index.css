@@ -1,0 +1,75 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    font-weight: 400;
+
+    color-scheme: dark;
+    
+    /* Dracula Theme High Contrast Tokens */
+    --bg-primary: #1E1F29; 
+    --bg-secondary: #282A36; 
+    --bg-tertiary: #44475A; 
+    
+    --bg-accent: #BD93F9; 
+    --bg-accent-hover: #FF79C6; 
+    --bg-accent-glow: rgba(189, 147, 249, 0.4);
+    
+    --text-primary: #F8F8F2; 
+    --text-secondary: #8BE9FD; 
+    --text-accent: #FFB86C; 
+    --text-inverse: #282A36;
+    
+    --border-color: #44475A;
+    --border-focus: #BD93F9;
+
+    --success-color: #50FA7B; 
+    --success-bg: rgba(80, 250, 123, 0.15);
+
+    --danger-color: #FF5555;
+    --danger-bg: rgba(255, 85, 85, 0.15);
+  }
+
+  body {
+    margin: 0;
+    display: flex;
+    place-items: center;
+    min-height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+  }
+
+  #root {
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    text-align: left;
+  }
+}
+
+@layer utilities {
+  .scrollbar-dracula::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  .scrollbar-dracula::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+  }
+  .scrollbar-dracula::-webkit-scrollbar-thumb {
+    background: var(--bg-tertiary);
+    border-radius: 9999px;
+  }
+  .scrollbar-dracula::-webkit-scrollbar-thumb:hover {
+    background: #6272A4;
+  }
+}
