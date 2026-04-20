@@ -150,6 +150,20 @@ export function useDictionary() {
     }
   }, [files]);
 
+  const reloadFile = useCallback(async (path: string) => {
+    try {
+      setIsLoading(true);
+      const res = await invoke<LoadResult>("reload_files", { filePaths: [path] });
+      setFiles(res.files);
+      setTotalEntries(res.total_entries);
+    } catch (err) {
+      console.error("Failed to reload file", err);
+      alert("Failed to reload file: " + err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
   const search = useCallback(async (keyword: string): Promise<SearchResult | null> => {
     const trimmedKeyword = keyword.trim();
     if (!trimmedKeyword) return null;
@@ -172,6 +186,7 @@ export function useDictionary() {
     toggleAllFiles,
     resetDictionary,
     reloadFiles,
+    reloadFile,
     search,
   };
 }

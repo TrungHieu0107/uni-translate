@@ -12,6 +12,7 @@ interface FileManagerProps {
   onToggleAllFiles?: (enabled: boolean) => void;
   onReset: () => void;
   onReload?: () => void;
+  onReloadFile?: (path: string) => void;
 }
 
 export function FileManager({ 
@@ -23,7 +24,8 @@ export function FileManager({
   onToggleFileEnabled, 
   onToggleAllFiles,
   onReset,
-  onReload
+  onReload,
+  onReloadFile
 }: FileManagerProps) {
   const [pathInput, setPathInput] = useState("");
 
@@ -155,14 +157,24 @@ export function FileManager({
                   <span className="text-xs text-drac-text-secondary">{f.entries_count.toLocaleString()} rows</span>
                 </div>
 
-                <button 
-                  className="p-1 rounded opacity-0 group-hover:opacity-100 text-drac-text-primary hover:bg-drac-bg-tertiary transition-all disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 ml-2"
-                  onClick={() => onRemoveFile(f.path)}
-                  disabled={isLoading}
-                  title="Remove file"
-                >
-                  <X size={14} />
-                </button>
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all ml-2 flex-shrink-0">
+                  <button 
+                    className="p-1 rounded text-drac-accent hover:bg-drac-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={() => onReloadFile?.(f.path)}
+                    disabled={isLoading}
+                    title="Reload this file from disk"
+                  >
+                    <RotateCw size={14} />
+                  </button>
+                  <button 
+                    className="p-1 rounded text-drac-text-primary hover:bg-drac-bg-tertiary transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={() => onRemoveFile(f.path)}
+                    disabled={isLoading}
+                    title="Remove file"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
               </div>
             ))
           )}

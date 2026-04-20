@@ -6,8 +6,9 @@ import { ResultList } from "./components/ResultList";
 import { BulkTranslator } from "./components/BulkTranslator";
 import { SQLAnalyzerTab } from "./components/SQLAnalyzerTab";
 import { SQLResolverTab } from "./components/SQLResolverTab";
+import { SQLVisualizerTab } from "./components/SQLVisualizerTab";
 
-type ViewMode = "dictionary" | "translator" | "analyzer" | "resolver";
+type ViewMode = "dictionary" | "translator" | "analyzer" | "resolver" | "visualizer";
 
 function App() {
   const { 
@@ -18,6 +19,7 @@ function App() {
     removeFile, 
     resetDictionary, 
     reloadFiles,
+    reloadFile,
     search,
     toggleFileEnabled,
     toggleAllFiles
@@ -65,6 +67,7 @@ function App() {
         onToggleAllFiles={toggleAllFiles}
         onReset={resetDictionary}
         onReload={reloadFiles}
+        onReloadFile={reloadFile}
       />
       
       <main className="flex-1 flex flex-col bg-drac-bg-primary relative min-w-0">
@@ -94,6 +97,12 @@ function App() {
           >
             SQL Resolver
           </button>
+          <button 
+            className={`px-4 py-1.5 rounded text-sm font-medium transition-colors ${viewMode === "visualizer" ? "bg-drac-bg-tertiary text-drac-accent" : "text-drac-text-secondary hover:text-drac-text-primary"}`}
+            onClick={() => setViewMode("visualizer")}
+          >
+            SQL Visualizer
+          </button>
         </div>
 
         {viewMode === "dictionary" && (
@@ -122,6 +131,10 @@ function App() {
 
         {viewMode === "resolver" && (
           <SQLResolverTab />
+        )}
+
+        {viewMode === "visualizer" && (
+          <SQLVisualizerTab />
         )}
       </main>
     </div>

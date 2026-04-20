@@ -332,7 +332,7 @@ function processSingleBuffer(appends: ColumnAppend[]): Partial<PathResult> {
     tableName,
     tables,
     columns: deduplicateCols(columns),
-    fullSql: formatSQL(sql)
+    fullSql: formatSql(sql).result
   };
 }
 
@@ -380,110 +380,7 @@ function processMultiBuffer(appends: ColumnAppend[]): Partial<PathResult> {
   };
 }
 
-/**
- * Lightweight SQL Formatter
- */
-export function formatSQL(sql: string): string {
-  if (!sql) return "";
-
-  // 1. Normalize whitespace to a single space
-  let formatted = sql.replace(/\s+/g, " ").trim();
-
-  // 2. Tokenize by space but keep parentheses and commas as separate tokens
-  formatted = formatted
-    .replace(/\(/g, " ( ")
-    .replace(/\)/g, " ) ")
-    .replace(/,/g, " , ");
-    
-  const tokens = formatted.split(/\s+/).filter(t => t.length > 0);
-
-  const sectionKeywords = [
-    "SELECT", "FROM", "WHERE", "GROUP BY", "ORDER BY", "HAVING", 
-    "LEFT", "RIGHT", "INNER", "CROSS", "JOIN",
-    "UPDATE", "SET", "INSERT", "INTO", "VALUES", "DELETE", "WITH"
-  ];
-  const breakers = ["AND", "OR", ","];
-  
-  // Keywords that usually precede a block-starting parenthesis (not a function)
-  const blockStarters = ["IN", "VALUES", "AND", "OR", "ON", "WHERE", "FROM", "JOIN", "INTO", "("];
-
-  let result = "";
-  let nestStack: ("block" | "func")[] = []; // Tracks if current depth is a block or function
-  let sectionIndent = 0; // Tracks if we are inside a section
-  let lastToken = "";
-  let currentSection = "";
-
-  for (let i = 0; i < tokens.length; i++) {
-    const token = tokens[i];
-    const upperToken = token.toUpperCase();
-    
-    let isSection = sectionKeywords.includes(upperToken);
-    const isBreaker = breakers.includes(upperToken);
-
-    // Special handling for multi-token sections like "INSERT INTO" or "GROUP BY"
-    if (isSection) {
-      if (upperToken === "INTO" && lastToken.toUpperCase() === "INSERT") {
-        isSection = false; // "INTO" follows "INSERT", don't start a new section line
-        result += " INTO";
-        currentSection = "INSERT";
-      } else if (upperToken === "BY" && (lastToken.toUpperCase() === "GROUP" || lastToken.toUpperCase() === "ORDER")) {
-        isSection = false;
-        result += " BY";
-      } else {
-        if (result) result += "\n";
-        result += "\t".repeat(nestStack.length) + upperToken;
-        sectionIndent = 1;
-        currentSection = upperToken;
-      }
-    } else if (token === "(") {
-      const prevUpper = lastToken.toUpperCase();
-      // Heuristic: if preceded by a known keyword/operator, it's a block. 
-      // Also, in INSERT context, the parentheses are blocks (for field lists or values).
-      const isInsert = currentSection === "INSERT" || currentSection === "VALUES" || currentSection === "INTO";
-      const isFunction = lastToken && !blockStarters.includes(prevUpper) && !sectionKeywords.includes(prevUpper) && !isInsert;
-      
-      if (isFunction) {
-        result += "(";
-        nestStack.push("func");
-      } else {
-        result += "\n" + "\t".repeat(nestStack.length + sectionIndent) + "(";
-        nestStack.push("block");
-      }
-    } else if (token === ")") {
-      const type = nestStack.pop();
-      if (type === "func") {
-        result += ")";
-      } else {
-        result += "\n" + "\t".repeat(nestStack.length + sectionIndent) + ")";
-      }
-    } else if (isBreaker) {
-      result += " " + upperToken;
-    } else {
-      const currentNest = nestStack[nestStack.length - 1];
-      const prevUpper = lastToken.toUpperCase();
-      
-      if (currentNest === "func") {
-        // Function argument - stay inline
-        const needsSpace = lastToken !== "(" && token !== ")";
-        result += (needsSpace ? " " : "") + token;
-      } else {
-        const prevIsBreaker = breakers.includes(prevUpper);
-        const prevIsSection = sectionKeywords.includes(prevUpper);
-        const prevIsParen = lastToken === "(";
-        
-        if (prevIsSection || prevIsBreaker || prevIsParen) {
-          result += "\n" + "\t".repeat(nestStack.length + sectionIndent) + token;
-        } else {
-          result += " " + token;
-        }
-      }
-    }
-    
-    lastToken = token;
-  }
-
-  return result.trim();
-}
+import { formatSql } from "./sqlFormatter";
 
 function deduplicateCols(cols: ColumnMapping[]): ColumnMapping[] {
     const seen = new Set<string>();

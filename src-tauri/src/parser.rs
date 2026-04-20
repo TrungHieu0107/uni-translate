@@ -8,6 +8,10 @@ pub fn normalize_ja(s: &str) -> String {
     s.nfkc().collect::<String>()
 }
 
+pub fn unescape(s: &str) -> String {
+    s.replace("\\n", "\n").replace("\\t", "\t")
+}
+
 pub fn parse_excel_file(path: &str, state: &mut AppState) -> Result<usize, String> {
     let path_obj = Path::new(path);
     let name = path_obj.file_name()
@@ -34,8 +38,8 @@ pub fn parse_excel_file(path: &str, state: &mut AppState) -> Result<usize, Strin
                 if !ja_raw.trim().is_empty() && !en_raw.trim().is_empty() {
                     let ja_norm = normalize_ja(ja_raw.trim());
                     parsed_entries.push(DictionaryEntry {
-                        ja: ja_norm,
-                        en: en_raw.trim().to_string(),
+                        ja: unescape(&ja_norm),
+                        en: unescape(en_raw.trim()),
                         source_file: name.clone(),
                         source_path: path.to_string(),
                     });

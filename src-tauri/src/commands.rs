@@ -1,5 +1,5 @@
 use crate::state::{AppStateWrapper, FileInfo};
-use crate::parser::{parse_excel_file, remove_excel_file};
+use crate::parser::{parse_excel_file, remove_excel_file, unescape};
 use crate::search::{search as perform_search, SearchResult};
 use crate::storage::save_config;
 use serde::Serialize;
@@ -132,13 +132,14 @@ pub struct BulkTranslateResponse {
 
 #[tauri::command]
 pub fn bulk_translate(text: String, direction: String, state: State<'_, AppStateWrapper>) -> Result<BulkTranslateResponse, String> {
+    let unescaped_text = unescape(&text);
     let app_state = state.0.lock().map_err(|e| e.to_string())?;
 
-    if app_state.ja_to_en.is_empty() || text.trim().is_empty() {
+    if app_state.ja_to_en.is_empty() || unescaped_text.trim().is_empty() {
         return Ok(BulkTranslateResponse {
-            input_segments: vec![TranslateSegment { text: text.clone(), match_id: None }],
-            output_segments: vec![TranslateSegment { text: text.clone(), match_id: None }],
-            output_text: text,
+            input_segments: vec![TranslateSegment { text: unescaped_text.clone(), match_id: None }],
+            output_segments: vec![TranslateSegment { text: unescaped_text.clone(), match_id: None }],
+            output_text: unescaped_text,
         });
     }
 
@@ -177,9 +178,9 @@ pub fn bulk_translate(text: String, direction: String, state: State<'_, AppState
     let mut input_segments = Vec::new();
     let mut output_segments = Vec::new();
     let mut last_match_end = 0;
-    let text_bytes = text.as_bytes();
+    let text_bytes = unescaped_text.as_bytes();
 
-    for mat in ac.find_iter(&text) {
+    for mat in ac.find_iter(&unescaped_text) {
         let start = mat.start();
         let end = mat.end();
         let pattern_id = mat.pattern().as_usize();
@@ -187,7 +188,7 @@ pub fn bulk_translate(text: String, direction: String, state: State<'_, AppState
         let mut is_valid = true;
         if direction == "en_to_ja" {
             let prev_char_valid = start == 0 || (!text_bytes[start - 1].is_ascii_alphanumeric() && text_bytes[start - 1] != b'_');
-            let next_char_valid = end == text.len() || (!text_bytes[end].is_ascii_alphanumeric() && text_bytes[end] != b'_');
+            let next_char_valid = end == unescaped_text.len() || (!text_bytes[end].is_ascii_alphanumeric() && text_bytes[end] != b'_');
             if !prev_char_valid || !next_char_valid {
                 is_valid = false;
             }
@@ -196,13 +197,13 @@ pub fn bulk_translate(text: String, direction: String, state: State<'_, AppState
         if is_valid {
             // Add previous plain text
             if start > last_match_end {
-                let plain_text = text[last_match_end..start].to_string();
+                let plain_text = unescaped_text[last_match_end..start].to_string();
                 input_segments.push(TranslateSegment { text: plain_text.clone(), match_id: None });
                 output_segments.push(TranslateSegment { text: plain_text, match_id: None });
             }
             
             // Add matched segment
-            let original_match = text[start..end].to_string();
+            let original_match = unescaped_text[start..end].to_string();
             let translated_match = replacements[pattern_id].clone();
             
             input_segments.push(TranslateSegment { text: original_match, match_id: Some(pattern_id) });
@@ -213,8 +214,8 @@ pub fn bulk_translate(text: String, direction: String, state: State<'_, AppState
     }
     
     // Add final chunk
-    if last_match_end < text.len() {
-        let final_text = text[last_match_end..].to_string();
+    if last_match_end < unescaped_text.len() {
+        let final_text = unescaped_text[last_match_end..].to_string();
         input_segments.push(TranslateSegment { text: final_text.clone(), match_id: None });
         output_segments.push(TranslateSegment { text: final_text, match_id: None });
     }

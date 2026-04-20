@@ -1,6 +1,6 @@
 use crate::state::{AppState, DictionaryEntry};
 use serde::Serialize;
-use crate::parser::normalize_ja;
+use crate::parser::{normalize_ja, unescape};
 
 #[derive(Serialize)]
 pub struct SearchResult {
@@ -10,7 +10,8 @@ pub struct SearchResult {
 }
 
 pub fn search(keyword: &str, state: &AppState) -> SearchResult {
-    let kw_norm = normalize_ja(keyword);
+    let unescaped_kw = unescape(keyword);
+    let kw_norm = normalize_ja(&unescaped_kw);
     let kw_lower = kw_norm.to_lowercase();
     
     let mut exact_matches = Vec::new();
