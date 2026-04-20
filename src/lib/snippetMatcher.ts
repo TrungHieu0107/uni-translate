@@ -67,7 +67,6 @@ export class SnippetMatcher {
     // Normalize pattern once (could be cached if needed)
     const normalizedPattern = normalizeCondition(pattern);
     
-    const placeholders: string[] = [];
 
     // Escape remaining regex special characters that are NOT part of placeholders
     // This is tricky. Let's try a different approach:
