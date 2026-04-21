@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # Security Rules
 
 ## 🚨 CRITICAL — Never Violate These

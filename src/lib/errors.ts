@@ -16,8 +16,8 @@ export class AppError extends Error {
     // Ensure the prototype is set correctly for instanceof checks
     Object.setPrototypeOf(this, AppError.prototype);
     
-    if (Error.captureStackTrace) {
-      Error.captureStackTrace(this, this.constructor);
+    if ((Error as any).captureStackTrace) {
+      (Error as any).captureStackTrace(this, this.constructor);
     }
   }
 }

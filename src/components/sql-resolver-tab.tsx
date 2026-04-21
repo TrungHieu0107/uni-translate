@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { Send, Copy, Check, Trash2, Split, TableProperties, AlertCircle, Sparkles, Database, Loader2 } from "lucide-react";
-import { resolveAliasesFromSQL, ResolveResult } from "../lib/sqlAliasResolver";
-import { AliasBadgeList } from "./AliasBadgeList";
-import { DiffView } from "./DiffView";
+import { resolveAliasesFromSQL, ResolveResult } from "../lib/sql-alias-resolver";
+import { AliasBadgeList } from "./alias-badge-list";
+import { DiffView } from "./diff-view";
 
 export function SQLResolverTab() {
   const [inputSql, setInputSql] = useState(() => localStorage.getItem("resolver_inputSql") || "");

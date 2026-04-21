@@ -380,7 +380,7 @@ function processMultiBuffer(appends: ColumnAppend[]): Partial<PathResult> {
   };
 }
 
-import { formatSql } from "./sqlFormatter";
+import { formatSql } from "./sql-formatter";
 
 function deduplicateCols(cols: ColumnMapping[]): ColumnMapping[] {
     const seen = new Set<string>();

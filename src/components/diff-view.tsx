@@ -1,4 +1,4 @@
-import { Token } from "../lib/sqlAliasResolver";
+import { Token } from "../lib/sql-alias-resolver";
 
 interface DiffViewProps {
   tokens: Token[];

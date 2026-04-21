@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo, useRef, forwardRef } from "react";
 import { Copy, ArrowRightLeft, Languages, Check, Loader2, Plus, Trash2, GripHorizontal, RefreshCw, Database } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
-import { SheetMeta, ScanResult } from "../hooks/useDictionary";
-import { useAutoTableDetect } from "../hooks/useAutoTableDetect";
-import { DetectionBanner } from "./DetectionBanner";
+import { SheetMeta, ScanResult } from "../hooks/use-dictionary";
+import { useAutoTableDetect } from "../hooks/use-auto-table-detect";
+import { DetectionBanner } from "./detection-banner";
 
 interface MatchSpan {
   start: number;

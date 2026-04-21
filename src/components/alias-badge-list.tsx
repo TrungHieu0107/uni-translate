@@ -1,5 +1,5 @@
 import { ArrowRight, Database, FolderCode, FunctionSquare } from "lucide-react";
-import { AliasTarget } from "../lib/sqlAliasResolver";
+import { AliasTarget } from "../lib/sql-alias-resolver";
 
 interface AliasBadgeListProps {
   aliasMap: Record<string, AliasTarget>;

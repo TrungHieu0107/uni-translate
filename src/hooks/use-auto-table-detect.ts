@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { SheetMeta } from "./useDictionary";
-import { DetectionResult, detectTableNames } from "../lib/tableNameDetector";
+import { SheetMeta } from "./use-dictionary";
+import { DetectionResult, detectTableNames } from "../lib/table-name-detector";
 
 /**
  * Hook to manage auto-detection of table names on paste.

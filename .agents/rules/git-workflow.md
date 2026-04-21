@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # Git Workflow
 
 ## Branch Strategy (Git Flow)

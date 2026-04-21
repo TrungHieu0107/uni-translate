@@ -1,4 +1,4 @@
-import { SheetMeta } from "../hooks/useDictionary";
+import { SheetMeta } from "../hooks/use-dictionary";
 
 export type DetectionMethod = "sql-keyword" | "token-match";
 

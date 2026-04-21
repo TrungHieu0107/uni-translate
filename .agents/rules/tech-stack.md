@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # Technology Stack — Selection & Standards
 
 > This rule defines the **approved tech stack** for all projects. When starting a new project or proposing a new dependency, follow the decision criteria below.

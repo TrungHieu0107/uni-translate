@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Copy, Check, ChevronDown, ChevronRight, AlertCircle, Terminal, Database, Table, Filter, Settings, Code2, Brain } from "lucide-react";
-import { PathResult, ColumnMapping } from "../lib/javaCodeParser";
-import { DictionaryEntry } from "../hooks/useDictionary";
+import { PathResult, ColumnMapping } from "../lib/java-code-parser";
+import { DictionaryEntry } from "../hooks/use-dictionary";
 import { invoke } from "@tauri-apps/api/core";
-import { SQLDeepAnalysis, SqlAnalysis } from "./SQLDeepAnalysis";
-import { AppError, formatError } from "../lib/errors";
+import { SQLDeepAnalysis, SqlAnalysis } from "./sql-deep-analysis";
+import { formatError } from "../lib/errors";
 
 interface PathCardProps {
   path: PathResult;

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { FolderOpen, Download, Plus, Settings2, HelpCircle } from "lucide-react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
-import { SnippetFile, exportSnippetFile } from "../lib/snippetMatcher";
+import { SnippetFile, exportSnippetFile } from "../lib/snippet-matcher";
 
 interface SnippetPanelProps {
   snippetFile: SnippetFile;

@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { Play, Code2, Layers, AlertTriangle, Info, Terminal, Search } from "lucide-react";
-import { parseJavaSQL, PathResult, parseJavaSegments, extractConditionVariables } from "../lib/javaCodeParser";
-import { PathCard } from "./PathCard";
-import { useDictionary, DictionaryEntry } from "../hooks/useDictionary";
+import { parseJavaSQL, PathResult, parseJavaSegments, extractConditionVariables } from "../lib/java-code-parser";
+import { PathCard } from "./path-card";
+import { useDictionary, DictionaryEntry } from "../hooks/use-dictionary";
 import { formatError } from "../lib/errors";
 
 export function SQLAnalyzerTab() {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseToIR, renderIR } from './sqlConditionVisualizer';
+import { parseToIR, renderIR } from './sql-condition-visualizer';
 
 describe('sqlConditionVisualizer', () => {
   describe('parseToIR and renderIR', () => {

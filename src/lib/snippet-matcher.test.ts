@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeCondition } from './conditionNormalizer';
-import { SnippetMatcher } from './snippetMatcher';
+import { normalizeCondition } from './condition-normalizer';
+import { SnippetMatcher } from './snippet-matcher';
 
 describe('conditionNormalizer', () => {
   it('normalizes basic conditions', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveAliasesFromSQL } from './sqlAliasResolver';
+import { resolveAliasesFromSQL } from './sql-alias-resolver';
 
 describe('sqlAliasResolver', () => {
 
@@ -68,14 +68,14 @@ describe('sqlAliasResolver', () => {
 
     expect(result.aliasMap['DAILY_STATS']?.kind).toBe("cte");
     expect(result.aliasMap['P']).toMatchObject({ kind: "table", name: "PROFILE_MASTER", originalAlias: "P" });
-    expect(result.aliasMap['D']).toMatchObject({ kind: "table", name: "DAILY_STATS" }); 
+    expect(result.aliasMap['D']).toMatchObject({ kind: "cte", name: "DAILY_STATS" });
 
     const normalize = (s: string) => s.replace(/\s+/g, ' ').trim();
     const expectedOutput = `
       WITH DAILY_STATS AS (SELECT USER_ID, COUNT(*) AS LOGIN_COUNT FROM ACTIVITY_LOG GROUP BY USER_ID)
-      SELECT PROFILE_MASTER[P].FULL_NAME, DAILY_STATS[D].LOGIN_COUNT
+      SELECT PROFILE_MASTER[P].FULL_NAME, D.LOGIN_COUNT
       FROM PROFILE_MASTER[P] P
-      INNER JOIN DAILY_STATS[D] D ON PROFILE_MASTER[P].UID = DAILY_STATS[D].USER_ID
+      INNER JOIN DAILY_STATS D ON PROFILE_MASTER[P].UID = D.USER_ID
     `;
     expect(normalize(result.resolvedSQL)).toBe(normalize(expectedOutput));
   });

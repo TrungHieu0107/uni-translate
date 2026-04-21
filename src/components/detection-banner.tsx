@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Search, CheckCircle, AlertCircle, X, CheckSquare, ChevronDown, ChevronUp } from 'lucide-react';
-import { DetectionResult, DetectionMethod } from '../lib/tableNameDetector';
+import { DetectionResult, DetectionMethod } from '../lib/table-name-detector';
 
 interface DetectionBannerProps {
   result: DetectionResult;

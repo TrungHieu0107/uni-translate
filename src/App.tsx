@@ -1,20 +1,20 @@
 import { useState, useEffect } from "react";
-import { useDictionary, SearchResult } from "./hooks/useDictionary";
-import { FileManager } from "./components/FileManager";
-import { SearchBox } from "./components/SearchBox";
-import { ResultList } from "./components/ResultList";
-import { BulkTranslator } from "./components/BulkTranslator";
-import { SQLAnalyzerTab } from "./components/SQLAnalyzerTab";
-import { SQLResolverTab } from "./components/SQLResolverTab";
-import { SQLVisualizerTab } from "./components/SQLVisualizerTab";
-import { TableSelectorPanel } from "./components/TableSelectorPanel";
-import { useTableSelection } from "./hooks/useTableSelection";
+import { useDictionary, SearchResult } from "./hooks/use-dictionary";
+import { FileManager } from "./components/file-manager";
+import { SearchBox } from "./components/search-box";
+import { ResultList } from "./components/result-list";
+import { BulkTranslator } from "./components/bulk-translator";
+import { SQLAnalyzerTab } from "./components/sql-analyzer-tab";
+import { SQLResolverTab } from "./components/sql-resolver-tab";
+import { SQLVisualizerTab } from "./components/sql-visualizer-tab";
+import { TableSelectorPanel } from "./components/table-selector-panel";
+import { useTableSelection } from "./hooks/use-table-selection";
 
 type ViewMode = "dictionary" | "translator" | "analyzer" | "resolver" | "visualizer";
 
-import { useParseProgress } from "./hooks/useParseProgress";
-import { ParseProgressBar } from "./components/ParseProgressBar";
-import { SplashLoading } from "./components/SplashLoading";
+import { useParseProgress } from "./hooks/use-parse-progress";
+import { ParseProgressBar } from "./components/parse-progress-bar";
+import { SplashLoading } from "./components/splash-loading";
 
 function App() {
   const { progress, startProgress, resetProgress } = useParseProgress();

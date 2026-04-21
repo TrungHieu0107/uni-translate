@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # Naming Conventions
 
 > Standard naming rules for cache keys, database identifiers, queues, events, environment variables, and more.

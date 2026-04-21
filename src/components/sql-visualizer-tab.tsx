@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo } from "react";
 import { Copy, Check, Trash2, Send, FileText, Code, Loader2 } from "lucide-react";
-import { parseToIR, renderIR, IRNode } from "../lib/sqlConditionVisualizer";
-import { SnippetFile, SnippetMatcher } from "../lib/snippetMatcher";
-import { VisualizerOutput } from "./VisualizerOutput";
-import { SnippetPanel } from "./SnippetPanel";
+import { parseToIR, renderIR, IRNode } from "../lib/sql-condition-visualizer";
+import { SnippetFile, SnippetMatcher } from "../lib/snippet-matcher";
+import { VisualizerOutput } from "./visualizer-output";
+import { SnippetPanel } from "./snippet-panel";
 
 export function SQLVisualizerTab() {
   const [inputCode, setInputCode] = useState(() => localStorage.getItem("visualizer_inputCode") || "");

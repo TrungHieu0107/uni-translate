@@ -1,4 +1,5 @@
-import { parseJavaSQL } from "./javaCodeParser";
+import { describe, it, expect } from 'vitest';
+import { parseJavaSQL } from "./java-code-parser";
 
 /**
  * Unit tests for Java SQL Code Parser
@@ -43,27 +44,20 @@ const SAMPLE_INSERT_DUAL_BUFFER = `
     }
 `;
 
-/**
- * Test execution simulation (Manual assertion logic)
- */
-export function runTests() {
-    console.log("Running Java SQL Parser Tests...");
+describe('javaCodeParser', () => {
+    it('should parse Single Buffer UPDATE correctly', () => {
+        const res = parseJavaSQL(SAMPLE_UPDATE_SINGLE_BUFFER);
+        expect(res.length).toBe(1);
+        expect(res[0].type).toBe("UPDATE");
+        expect(res[0].tableName).toBe("INVENTORY_STOCK");
+        expect(res[0].columns.some(c => c.en === "SUPPLIER_CODE")).toBe(true);
+        expect(res[0].tables.some(t => t.name === "SHIPMENT_MANIFEST")).toBe(true);
+    });
 
-    // Test 1: Single Buffer UPDATE
-    const res1 = parseJavaSQL(SAMPLE_UPDATE_SINGLE_BUFFER);
-    console.assert(res1.length === 1, "Should have 1 path");
-    console.assert(res1[0].type === "UPDATE", "Should detect UPDATE");
-    console.assert(res1[0].tableName === "INVENTORY_STOCK", "Should detect table name");
-    console.assert(res1[0].columns.some(c => c.en === "SUPPLIER_CODE"), "Should extract SET column");
-    console.assert(res1[0].tables.some(t => t.name === "SHIPMENT_MANIFEST"), "Should detect JOIN table");
-    console.log("✔ Test 1 passed: Single Buffer UPDATE");
-
-    // Test 2: Dual Buffer INSERT
-    const res2 = parseJavaSQL(SAMPLE_INSERT_DUAL_BUFFER);
-    console.assert(res2.length === 2, "Should have 2 paths (includePayload true/false)");
-    const pathWithPayload = res2.find(p => p.conditions["includePayload"] === true);
-    console.assert(pathWithPayload?.columns.some(c => c.en === "PAYLOAD_BLOB"), "Should extract conditional column");
-    console.log("✔ Test 2 passed: Dual Buffer INSERT");
-
-    console.log("All tests completed.");
-}
+    it('should parse Dual Buffer INSERT correctly', () => {
+        const res = parseJavaSQL(SAMPLE_INSERT_DUAL_BUFFER);
+        expect(res.length).toBe(2);
+        const pathWithPayload = res.find(p => p.conditions["includePayload"] === true);
+        expect(pathWithPayload?.columns.some(c => c.en === "PAYLOAD_BLOB")).toBe(true);
+    });
+});

@@ -12,8 +12,8 @@ import {
   Info,
   RotateCw
 } from "lucide-react";
-import HighlightedText from './HighlightedText';
-import { SheetMeta, ScanResult } from "../hooks/useDictionary";
+import HighlightedText from './highlighted-text';
+import { SheetMeta, ScanResult } from "../hooks/use-dictionary";
 
 interface TableSelectorPanelProps {
   scanResult: ScanResult | null;

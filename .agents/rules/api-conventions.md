@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # API Conventions
 
 ## REST API Design Standards

@@ -1,4 +1,4 @@
-import { ParseProgress } from "../hooks/useParseProgress";
+import { ParseProgress } from "../hooks/use-parse-progress";
 import { FileText, Database } from "lucide-react";
 
 interface ParseProgressBarProps {

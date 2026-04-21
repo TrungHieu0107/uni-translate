@@ -3,7 +3,7 @@
  * Parses Java SQL construction code into a unified visual representation.
  */
 
-import { formatSql, FormatterState } from "./sqlFormatter";
+import { formatSql, FormatterState } from "./sql-formatter";
 
 export type IRNode =
   | { kind: "sql"; value: string }
@@ -304,7 +304,7 @@ function assignGroupIds(nodes: IRNode[], parentBranchId?: string, groupLetter: {
 }
 
 
-import { SnippetMatcher } from "./snippetMatcher";
+import { SnippetMatcher } from "./snippet-matcher";
 
 export interface RenderResult {
   output: string;

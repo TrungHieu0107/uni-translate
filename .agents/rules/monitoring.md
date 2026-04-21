@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # Monitoring & Observability
 
 > Standards for logging, metrics, tracing, alerting, and Grafana dashboard design.

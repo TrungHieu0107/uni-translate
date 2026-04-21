@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Upload, X, FileSpreadsheet, Trash2, Link, Database, CheckSquare, Square, MinusSquare, RotateCw } from "lucide-react";
-import { FileInfo } from "../hooks/useDictionary";
+import { FileInfo } from "../hooks/use-dictionary";
 
 interface FileManagerProps {
   files: FileInfo[];

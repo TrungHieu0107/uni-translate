@@ -1,4 +1,4 @@
-import { normalizeCondition } from "./conditionNormalizer";
+import { normalizeCondition } from "./condition-normalizer";
 
 export interface SnippetFile {
   exact: Record<string, string>;

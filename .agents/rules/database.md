@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 doc# Database Rules
 
 ## General Rules

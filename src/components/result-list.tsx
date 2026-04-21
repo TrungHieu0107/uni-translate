@@ -1,7 +1,7 @@
 import { useState, useRef, useMemo } from "react";
 import { Copy, Check } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { SearchResult, DictionaryEntry } from "../hooks/useDictionary";
+import { SearchResult, DictionaryEntry } from "../hooks/use-dictionary";
 
 interface ResultListProps {
   results: SearchResult | null;
@@ -12,7 +12,7 @@ type RowType =
   | { type: 'header'; title: string; colorClass: string }
   | { type: 'entry'; entry: DictionaryEntry; isExact: boolean };
 
-import HighlightedText from "./HighlightedText";
+import HighlightedText from "./highlighted-text";
 
 function ResultItem({ entry, keyword, isExact }: { entry: DictionaryEntry, keyword: string, isExact: boolean }) {
   const [copied, setCopied] = useState(false);
