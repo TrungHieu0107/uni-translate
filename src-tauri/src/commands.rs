@@ -420,3 +420,8 @@ pub async fn bulk_translate_v2(
 
     Ok(result_buffer)
 }
+
+#[tauri::command]
+pub async fn analyze_sql(query: String) -> Result<crate::sql_analyzer::SqlAnalysis, String> {
+    Ok(crate::sql_analyzer::analyze_sql(&query))
+}

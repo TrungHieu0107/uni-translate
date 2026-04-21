@@ -1,7 +1,9 @@
 import { useState } from "react";
-import { Copy, Check, ChevronDown, ChevronRight, AlertCircle, Terminal, Database, Table, Filter, Settings, Code2 } from "lucide-react";
+import { Copy, Check, ChevronDown, ChevronRight, AlertCircle, Terminal, Database, Table, Filter, Settings, Code2, Brain } from "lucide-react";
 import { PathResult, ColumnMapping } from "../lib/javaCodeParser";
 import { DictionaryEntry } from "../hooks/useDictionary";
+import { invoke } from "@tauri-apps/api/core";
+import { SQLDeepAnalysis, SqlAnalysis } from "./SQLDeepAnalysis";
 
 interface PathCardProps {
   path: PathResult;
@@ -12,6 +14,32 @@ export function PathCard({ path, translations }: PathCardProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const [copiedSql, setCopiedSql] = useState(false);
   const [copiedCols, setCopiedCols] = useState(false);
+  const [showDeepAnalysis, setShowDeepAnalysis] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysis, setAnalysis] = useState<SqlAnalysis | null>(null);
+
+  const handleDeepAnalysis = async () => {
+    if (showDeepAnalysis) {
+      setShowDeepAnalysis(false);
+      return;
+    }
+
+    if (analysis) {
+      setShowDeepAnalysis(true);
+      return;
+    }
+
+    try {
+      setIsAnalyzing(true);
+      const res = await invoke<SqlAnalysis>("analyze_sql", { query: path.fullSql });
+      setAnalysis(res);
+      setShowDeepAnalysis(true);
+    } catch (err) {
+      console.error("Deep analysis failed:", err);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
 
   const copyToClipboard = (text: string, setter: (v: boolean) => void) => {
     navigator.clipboard.writeText(text);
@@ -94,15 +122,36 @@ export function PathCard({ path, translations }: PathCardProps) {
 
           {/* SQL Preview Section */}
           <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-2 text-drac-text-secondary ml-1">
-              <Code2 size={14} />
-              <span className="text-[10px] font-bold uppercase tracking-widest">Reconstructed SQL</span>
+            <div className="flex items-center justify-between ml-1">
+              <div className="flex items-center gap-2 text-drac-text-secondary">
+                <Code2 size={14} />
+                <span className="text-[10px] font-bold uppercase tracking-widest">Reconstructed SQL</span>
+              </div>
+              <button 
+                onClick={handleDeepAnalysis}
+                disabled={isAnalyzing}
+                className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest transition-all ${
+                  showDeepAnalysis 
+                    ? "bg-drac-accent text-drac-bg-secondary" 
+                    : "bg-drac-bg-tertiary text-drac-accent border border-drac-accent/30 hover:border-drac-accent"
+                }`}
+              >
+                <Brain size={12} className={isAnalyzing ? "animate-spin" : ""} />
+                {isAnalyzing ? "Analyzing..." : showDeepAnalysis ? "Hide Analysis" : "Deep Analysis"}
+              </button>
             </div>
-            <textarea
-              readOnly
-              className="w-full p-3 bg-drac-bg-primary border border-drac-border rounded-lg text-xs font-mono text-drac-text-primary resize-y h-32 min-h-[80px] max-h-[500px] outline-none scrollbar-dracula whitespace-pre"
-              value={path.fullSql}
-            />
+            
+            {showDeepAnalysis && analysis && (
+              <SQLDeepAnalysis sql={path.fullSql} analysis={analysis} />
+            )}
+
+            {!showDeepAnalysis && (
+              <textarea
+                readOnly
+                className="w-full p-3 bg-drac-bg-primary border border-drac-border rounded-lg text-xs font-mono text-drac-text-primary resize-y h-32 min-h-[80px] max-h-[500px] outline-none scrollbar-dracula whitespace-pre"
+                value={path.fullSql}
+              />
+            )}
           </div>
 
           {/* SET / VALUES Section */}

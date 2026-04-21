@@ -4,6 +4,7 @@ mod search;
 mod state;
 mod storage;
 mod events;
+mod sql_analyzer;
 
 use std::sync::Mutex;
 use state::{AppState, AppStateWrapper};
@@ -50,7 +51,8 @@ pub fn run() {
             commands::reset_dictionary,
             commands::bulk_translate_v2,
             commands::toggle_file_enabled,
-            commands::toggle_all_files
+            commands::toggle_all_files,
+            commands::analyze_sql
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
