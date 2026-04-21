@@ -4,6 +4,7 @@ import { PathResult, ColumnMapping } from "../lib/javaCodeParser";
 import { DictionaryEntry } from "../hooks/useDictionary";
 import { invoke } from "@tauri-apps/api/core";
 import { SQLDeepAnalysis, SqlAnalysis } from "./SQLDeepAnalysis";
+import { AppError, formatError } from "../lib/errors";
 
 interface PathCardProps {
   path: PathResult;
@@ -35,7 +36,10 @@ export function PathCard({ path, translations }: PathCardProps) {
       setAnalysis(res);
       setShowDeepAnalysis(true);
     } catch (err) {
-      console.error("Deep analysis failed:", err);
+      const { message, code } = formatError(err);
+      console.error(`[${code}] Deep analysis failed:`, message);
+      // In a real app, we might use a toast here
+      alert(`Deep analysis failed: ${message} (Code: ${code})`);
     } finally {
       setIsAnalyzing(false);
     }

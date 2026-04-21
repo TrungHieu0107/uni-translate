@@ -3,6 +3,7 @@ import { Play, Code2, Layers, AlertTriangle, Info, Terminal, Search } from "luci
 import { parseJavaSQL, PathResult, parseJavaSegments, extractConditionVariables } from "../lib/javaCodeParser";
 import { PathCard } from "./PathCard";
 import { useDictionary, DictionaryEntry } from "../hooks/useDictionary";
+import { formatError } from "../lib/errors";
 
 export function SQLAnalyzerTab() {
   const { search, isLoading: isDictLoading } = useDictionary();
@@ -57,8 +58,9 @@ export function SQLAnalyzerTab() {
 
       setTranslations(newTranslations);
     } catch (err) {
-      console.error("Analysis failed:", err);
-      alert("Failed to analyze code. Check console for details.");
+      const { message, code } = formatError(err);
+      console.error(`[${code}] Analysis failed:`, message);
+      alert(`Failed to analyze code: ${message} (Code: ${code})`);
     } finally {
       setIsAnalyzing(false);
     }

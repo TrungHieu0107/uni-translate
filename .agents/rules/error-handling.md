@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # Error Handling
 
 ## Core Principles
