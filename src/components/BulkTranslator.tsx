@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, forwardRef, useCallback } from "react";
+import { useState, useEffect, useMemo, useRef, forwardRef } from "react";
 import { Copy, ArrowRightLeft, Languages, Check, Loader2, Plus, Trash2, GripHorizontal, RefreshCw, Database } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { SheetMeta, ScanResult } from "../hooks/useDictionary";
@@ -90,7 +90,7 @@ const SegmentedViewer = forwardRef<HTMLDivElement, {
   }
 
   // Render text segments by splitting on-the-fly using spans
-  const elements: JSX.Element[] = [];
+  const elements: any[] = [];
   let lastPos = 0;
 
   spans.forEach((span, idx) => {
@@ -329,10 +329,6 @@ function SessionRow({
           <DetectionBanner 
             result={detectionResult}
             isApplied={true}
-            pendingChecked={new Set()}
-            onToggle={() => {}}
-            onApplyAndTranslate={() => {}}
-            onTranslateOnly={() => {}}
             onDismiss={dismissBanner}
           />
         )}
@@ -397,7 +393,6 @@ export function BulkTranslator({
   disabled,
   scanResult,
   selectedSheets,
-  onToggleSheet,
   onAutoAdd,
   onAutoRemove,
   isApplying
@@ -405,7 +400,6 @@ export function BulkTranslator({
   disabled: boolean,
   scanResult: ScanResult | null,
   selectedSheets: string[],
-  onToggleSheet: (cacheKey: string) => void,
   onAutoAdd: (sheetNames: string[]) => Promise<void>,
   onAutoRemove: (sheetNames: string[]) => Promise<void>,
   isApplying: boolean
@@ -544,16 +538,6 @@ export function BulkTranslator({
 
   const activeSelectionSet = useMemo(() => new Set(selectedSheets), [selectedSheets]);
 
-  const onSelectionAdd = useCallback(async (sheetNames: string[]) => {
-    // sheetNames are from detectionResult (table names)
-    // We need to find the cache_key for each sheetName
-    const toAdd = knownSheets.filter(s => sheetNames.includes(s.name));
-    for (const sheet of toAdd) {
-      if (!activeSelectionSet.has(sheet.cache_key)) {
-        await onToggleSheet(sheet.cache_key);
-      }
-    }
-  }, [knownSheets, activeSelectionSet, onToggleSheet]);
 
   const handleCopy = (id: string) => {
     const session = sessions.find((s) => s.id === id);

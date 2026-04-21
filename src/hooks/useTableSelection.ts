@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
-import { ScanResult, FileInfo, useDictionary } from "./useDictionary";
+import { ScanResult, FileInfo, useDictionary, SheetMeta } from "./useDictionary";
 
 export function useTableSelection(files: FileInfo[]) {
   const { 

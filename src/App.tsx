@@ -187,7 +187,6 @@ function App() {
             disabled={files.length === 0} 
             scanResult={scanResult}
             selectedSheets={selectedSheets}
-            onToggleSheet={toggleSheet}
             onAutoAdd={addAutoSelection}
             onAutoRemove={removeAutoSelection}
             isApplying={isApplying}

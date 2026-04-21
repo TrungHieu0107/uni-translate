@@ -1,13 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Search, CheckCircle, AlertCircle, X, CheckSquare, Square, ChevronDown, ChevronUp, Zap } from 'lucide-react';
+import { Search, CheckCircle, AlertCircle, X, CheckSquare, ChevronDown, ChevronUp } from 'lucide-react';
 import { DetectionResult, DetectionMethod } from '../lib/tableNameDetector';
 
 interface DetectionBannerProps {
   result: DetectionResult;
-  pendingChecked: Set<string>;
-  onToggle: (tableName: string) => void;
-  onApplyAndTranslate: () => void;
-  onTranslateOnly: () => void;
   onDismiss: () => void;
   isApplied?: boolean;
 }
@@ -24,14 +20,9 @@ const MethodBadge = ({ method }: { method: DetectionMethod }) => (
 
 export const DetectionBanner: React.FC<DetectionBannerProps> = ({
   result,
-  pendingChecked,
-  onToggle,
-  onApplyAndTranslate,
-  onTranslateOnly,
   onDismiss,
   isApplied = false,
 }) => {
-  const [showAlreadySelected, setShowAlreadySelected] = useState(false);
   const [isMainCollapsed, setIsMainCollapsed] = useState(isApplied);
   
   // Sync collapse state with isApplied when it changes to true
