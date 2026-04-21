@@ -41,11 +41,11 @@ pub fn search(keyword: &str, state: &AppState) -> SearchResult {
     let is_ascii = kw_lower.is_ascii();
     
     // 1. Exact Match
-    if let Some(entry) = state.ja_to_en.get(&kw_norm) {
+    if let Some(entry) = state.search_ja_to_en.get(&kw_norm) {
         exact_matches.push(entry.clone());
         seen.insert(entry.ja.clone());
     }
-    if let Some(entry) = state.en_to_ja.get(&kw_lower) {
+    if let Some(entry) = state.search_en_to_ja.get(&kw_lower) {
         if !seen.contains(&entry.ja) {
             exact_matches.push(entry.clone());
             seen.insert(entry.ja.clone());
@@ -55,17 +55,17 @@ pub fn search(keyword: &str, state: &AppState) -> SearchResult {
     // 2. Prefix Match
     if !kw_norm.is_empty() {
         // Japanese prefix
-        let start_idx = match state.ja_keys_sorted.binary_search(&kw_norm) {
+        let start_idx = match state.search_ja_keys_sorted.binary_search(&kw_norm) {
             Ok(idx) => idx + 1, // Skip exact match
             Err(idx) => idx,
         };
         
         let mut curr = start_idx;
-        while curr < state.ja_keys_sorted.len() {
-            let key = &state.ja_keys_sorted[curr];
+        while curr < state.search_ja_keys_sorted.len() {
+            let key = &state.search_ja_keys_sorted[curr];
             if key.starts_with(&kw_norm) {
                 if !seen.contains(key) {
-                    if let Some(entry) = state.ja_to_en.get(key) {
+                    if let Some(entry) = state.search_ja_to_en.get(key) {
                         prefix_matches.push(entry.clone());
                         seen.insert(key.clone());
                     }
@@ -78,16 +78,16 @@ pub fn search(keyword: &str, state: &AppState) -> SearchResult {
         
         // English prefix
         if is_ascii {
-            let start_idx = match state.en_keys_sorted.binary_search(&kw_lower) {
+            let start_idx = match state.search_en_keys_sorted.binary_search(&kw_lower) {
                 Ok(idx) => idx + 1,
                 Err(idx) => idx,
             };
             
             let mut curr = start_idx;
-            while curr < state.en_keys_sorted.len() {
-                let key = &state.en_keys_sorted[curr];
+            while curr < state.search_en_keys_sorted.len() {
+                let key = &state.search_en_keys_sorted[curr];
                 if key.starts_with(&kw_lower) {
-                    if let Some(entry) = state.en_to_ja.get(key) {
+                    if let Some(entry) = state.search_en_to_ja.get(key) {
                         if !seen.contains(&entry.ja) {
                             prefix_matches.push(entry.clone());
                             seen.insert(entry.ja.clone());
@@ -103,7 +103,7 @@ pub fn search(keyword: &str, state: &AppState) -> SearchResult {
 
     // 3. Substring Match
     if kw_norm.chars().count() >= 2 {
-        for entry in state.ja_to_en.values() {
+        for entry in state.search_ja_to_en.values() {
             if seen.contains(&entry.ja) {
                 continue;
             }

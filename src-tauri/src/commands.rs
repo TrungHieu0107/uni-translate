@@ -52,6 +52,8 @@ pub async fn scan_excel_sheets(
         }
     }
 
+    state.rebuild_search_dictionary();
+
     Ok(ScanResult { files })
 }
 
@@ -92,11 +94,12 @@ pub async fn load_excel_files(
         }
 
         s.rebuild_dictionary(&app_handle);
+        s.rebuild_search_dictionary();
         
         let mut files: Vec<FileInfo> = s.loaded_files.values().cloned().collect();
         files.sort_by(|a, b| a.name.cmp(&b.name));
         
-        (config_from_state(&s), files, s.ja_to_en.len())
+        (config_from_state(&s), files, s.search_ja_to_en.len())
     };
 
     save_config_async(config, &app_handle).await?;
@@ -123,7 +126,7 @@ pub async fn update_table_selection(
         s.rebuild_dictionary(&app_handle);
         
         (config_from_state(&s), DictionaryStats {
-            total_entries: s.ja_to_en.len(),
+            total_entries: s.search_ja_to_en.len(),
             active_sheets: s.active_table_sheets.len(),
         })
     };
@@ -143,7 +146,7 @@ pub fn get_active_sheets(state: State<'_, AppStateWrapper>) -> Result<Vec<String
 pub fn get_dictionary_stats(state: State<'_, AppStateWrapper>) -> Result<DictionaryStats, String> {
     let s = state.0.lock().map_err(|e| e.to_string())?;
     Ok(DictionaryStats {
-        total_entries: s.ja_to_en.len(),
+        total_entries: s.search_ja_to_en.len(),
         active_sheets: s.active_table_sheets.len(),
     })
 }
@@ -221,6 +224,7 @@ pub async fn remove_file(file_path: String, state: State<'_, AppStateWrapper>, a
         }
         
         s.rebuild_dictionary(&app_handle);
+        s.rebuild_search_dictionary();
         config_from_state(&s)
     };
 
@@ -235,6 +239,7 @@ pub async fn toggle_file_enabled(file_path: String, enabled: bool, state: State<
         if let Some(info) = s.loaded_files.get_mut(&file_path) {
             info.enabled = enabled;
             s.rebuild_dictionary(&app_handle);
+            s.rebuild_search_dictionary();
         }
         config_from_state(&s)
     };
@@ -250,6 +255,7 @@ pub async fn toggle_all_files(enabled: bool, state: State<'_, AppStateWrapper>, 
             info.enabled = enabled;
         }
         s.rebuild_dictionary(&app_handle);
+        s.rebuild_search_dictionary();
         config_from_state(&s)
     };
     save_config_async(config, &app_handle).await?;
@@ -270,6 +276,11 @@ pub async fn reset_dictionary(state: State<'_, AppStateWrapper>, app_handle: App
         s.ac_automaton_en = None;
         s.sorted_ja_entries.clear();
         s.sorted_en_entries.clear();
+        
+        s.search_ja_to_en.clear();
+        s.search_en_to_ja.clear();
+        s.search_ja_keys_sorted.clear();
+        s.search_en_keys_sorted.clear();
         
         // Clear DISK cache directory
         if let Some(cache_dir) = crate::storage::get_cache_dir(&app_handle) {

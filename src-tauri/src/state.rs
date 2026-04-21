@@ -61,6 +61,12 @@ pub struct AppState {
     pub sorted_ja_entries: Vec<(String, String)>, // (ja, en)
     pub sorted_en_entries: Vec<(String, String)>, // (en, ja)
     
+    // Dedicated search dictionary (all sheets from all enabled files)
+    pub search_ja_to_en: HashMap<String, DictionaryEntry>,
+    pub search_en_to_ja: HashMap<String, DictionaryEntry>,
+    pub search_ja_keys_sorted: Vec<String>,
+    pub search_en_keys_sorted: Vec<String>,
+    
     // RUST-004: Incremental tracking
     pub sheet_owned_ja_keys: HashMap<String, Vec<String>>,
     pub sheet_owned_en_keys: HashMap<String, Vec<String>>,
@@ -79,6 +85,10 @@ impl AppState {
             ac_automaton_en: None,
             sorted_ja_entries: Vec::new(),
             sorted_en_entries: Vec::new(),
+            search_ja_to_en: HashMap::new(),
+            search_en_to_ja: HashMap::new(),
+            search_ja_keys_sorted: Vec::new(),
+            search_en_keys_sorted: Vec::new(),
             sheet_owned_ja_keys: HashMap::new(),
             sheet_owned_en_keys: HashMap::new(),
         }
@@ -159,6 +169,61 @@ impl AppState {
         self.finalize_dictionary();
         let duration = start.elapsed();
         println!("Dictionary rebuild complete in {:?}. Total JA keys: {}", duration, self.ja_to_en.len());
+    }
+
+    pub fn rebuild_search_dictionary(&mut self) {
+        println!("Rebuilding search dictionary...");
+        let start = std::time::Instant::now();
+        
+        self.search_ja_to_en.clear();
+        self.search_en_to_ja.clear();
+
+        let mut all_sheet_info = Vec::new();
+
+        for file in self.loaded_files.values() {
+            if !file.enabled { continue; }
+            // For search, we load EVERYTHING in enabled files
+            for sheet in file.base_sheets.iter().chain(file.table_sheets.iter()) {
+                all_sheet_info.push((sheet.cache_key.clone(), sheet.cache_path.clone()));
+            }
+        }
+
+        println!("Loading {} total sheets for search", all_sheet_info.len());
+
+        let load_sheet = |(cache_key, path): (String, String)| -> Option<(String, SheetCache)> {
+            let bin = std::fs::read(path).ok()?;
+            let sheet_cache = bincode::deserialize::<SheetCache>(&bin).ok()?;
+            Some((cache_key, sheet_cache))
+        };
+
+        let all_sheets: Vec<(String, SheetCache)> = all_sheet_info.into_par_iter()
+            .filter_map(load_sheet)
+            .collect();
+
+        for (_key, sheet_cache) in all_sheets {
+            for entry in sheet_cache.entries {
+                if !self.search_ja_to_en.contains_key(&entry.ja) {
+                    self.search_ja_to_en.insert(entry.ja.clone(), entry.clone());
+                }
+                if !self.search_en_to_ja.contains_key(&entry.en_lower) {
+                    self.search_en_to_ja.insert(entry.en_lower.clone(), entry.clone());
+                }
+            }
+        }
+
+        self.finalize_search_dictionary();
+        let duration = start.elapsed();
+        println!("Search dictionary rebuild complete in {:?}. Total JA keys: {}", duration, self.search_ja_to_en.len());
+    }
+
+    fn finalize_search_dictionary(&mut self) {
+        let mut ja_keys: Vec<String> = self.search_ja_to_en.keys().cloned().collect();
+        ja_keys.sort();
+        let mut en_keys: Vec<String> = self.search_en_to_ja.keys().cloned().collect();
+        en_keys.sort();
+        
+        self.search_ja_keys_sorted = ja_keys;
+        self.search_en_keys_sorted = en_keys;
     }
 
 

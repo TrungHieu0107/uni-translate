@@ -44,6 +44,7 @@ pub fn run() {
                 }
                 
                 app_state.rebuild_dictionary(&app_handle);
+                app_state.rebuild_search_dictionary();
             });
             
             Ok(())
