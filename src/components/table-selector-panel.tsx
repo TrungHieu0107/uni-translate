@@ -170,10 +170,16 @@ export function TableSelectorPanel({
 
       <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
         {isApplying && (
-          <div className="absolute inset-0 bg-drac-bg-secondary/50 backdrop-blur-[1px] z-50 flex items-center justify-center animate-fade-in">
-             <div className="flex flex-col items-center gap-2 bg-drac-bg-tertiary/80 p-4 rounded-lg border border-drac-border shadow-xl">
-                <RotateCw size={24} className="animate-spin text-drac-accent" />
-                <span className="text-xs font-bold text-drac-accent tracking-widest animate-pulse">UPDATING</span>
+          <div className="absolute inset-0 bg-drac-bg-secondary/20 backdrop-blur-[2px] z-50 flex items-center justify-center animate-fade-in pointer-events-none">
+             <div className="flex flex-col items-center gap-3 bg-drac-bg-primary/70 p-6 rounded-2xl border border-drac-accent/30 shadow-2xl backdrop-blur-xl">
+                <div className="relative">
+                  <RotateCw size={24} className="animate-spin text-drac-accent" />
+                  <div className="absolute inset-0 bg-drac-accent/20 blur-lg animate-pulse"></div>
+                </div>
+                <div className="flex flex-col items-center gap-0.5">
+                  <span className="text-[10px] font-black text-drac-accent tracking-[0.4em] animate-pulse">SYNCHRONIZING</span>
+                  <span className="text-[8px] font-bold text-drac-text-secondary/50 tracking-widest">Applying Registry Updates</span>
+                </div>
              </div>
           </div>
         )}

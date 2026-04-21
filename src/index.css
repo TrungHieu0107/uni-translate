@@ -95,8 +95,8 @@
   }
 
   @keyframes rotate-slow {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
+    from { transform: translate(-50%, -50%) rotate(0deg); }
+    to { transform: translate(-50%, -50%) rotate(360deg); }
   }
 
   @keyframes reveal-mask {
@@ -104,8 +104,35 @@
     to { clip-path: inset(0 0 0 0); }
   }
 
+  @keyframes blob {
+    0%, 100% { border-radius: 35% 65% 70% 30% / 30% 30% 70% 70%; }
+    33% { border-radius: 65% 35% 30% 70% / 70% 70% 30% 30%; }
+    66% { border-radius: 35% 65% 40% 60% / 40% 60% 35% 65%; }
+  }
+
+  @keyframes scanline {
+    0% { transform: translateY(-100%); }
+    100% { transform: translateY(200%); }
+  }
+
+  @keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+
+  @keyframes loading-bar-smooth {
+    0% { width: 0%; left: 0%; }
+    50% { width: 100%; left: 0%; }
+    100% { width: 0%; left: 100%; }
+  }
+
   .animate-loading-bar {
     animation: loading-bar 2s ease-in-out infinite;
+  }
+
+  .animate-loading-bar-smooth {
+    position: absolute;
+    animation: loading-bar-smooth 3s cubic-bezier(0.65, 0, 0.35, 1) infinite;
   }
 
   .animate-slide-up {
@@ -121,10 +148,22 @@
   }
 
   .animate-rotate-slow {
-    animation: rotate-slow 12s linear infinite;
+    animation: rotate-slow 20s linear infinite;
   }
 
   .animate-reveal {
     animation: reveal-mask 1.2s cubic-bezier(0.77, 0, 0.175, 1) forwards;
+  }
+
+  .animate-blob {
+    animation: blob 8s ease-in-out infinite;
+  }
+
+  .animate-scanline {
+    animation: scanline 4s linear infinite;
+  }
+
+  .animate-shimmer {
+    animation: shimmer 2s linear infinite;
   }
 }

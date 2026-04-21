@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Upload, X, FileSpreadsheet, Trash2, Link, Database, CheckSquare, Square, MinusSquare, RotateCw } from "lucide-react";
 import { FileInfo } from "../hooks/use-dictionary";
+import { FileItemSkeleton } from "./ui/skeleton";
 
 interface FileManagerProps {
   files: FileInfo[];
@@ -67,8 +68,17 @@ export function FileManager({
           onClick={onLoadFiles} 
           disabled={isLoading}
         >
-          <Upload size={16} />
-          {isLoading ? "Loading..." : "Load via Dialog"}
+          {isLoading ? (
+            <div className="flex items-center gap-2">
+              <RotateCw size={16} className="animate-spin" />
+              <span className="animate-pulse tracking-widest font-black text-[10px]">PROCESSING...</span>
+            </div>
+          ) : (
+            <>
+              <Upload size={16} />
+              Load via Dialog
+            </>
+          )}
         </button>
 
         <div className="flex gap-2 mt-1">
@@ -135,13 +145,20 @@ export function FileManager({
         </div>
         
         <div className="flex flex-col gap-2">
-          {files.length === 0 ? (
+          {isLoading && files.length === 0 ? (
+            <>
+              <FileItemSkeleton />
+              <FileItemSkeleton />
+              <FileItemSkeleton />
+            </>
+          ) : files.length === 0 ? (
             <div className="text-center py-8 px-4 text-drac-text-secondary">
               <FileSpreadsheet size={24} className="opacity-30 mx-auto mb-2" />
               <div className="text-sm">No files loaded</div>
             </div>
           ) : (
-            files.map(f => (
+            <>
+              {files.map(f => (
               <div key={f.path} className={`bg-drac-bg-primary rounded-md p-3 flex items-center border transition-all animate-fade-in group ${f.enabled ? 'border-drac-border opacity-100' : 'border-transparent opacity-50 gray-scale blur-[0.3px]'}`}>
                 <button 
                   className={`flex-shrink-0 mr-3 transition-colors ${f.enabled ? 'text-drac-accent' : 'text-drac-text-secondary'}`}
@@ -176,7 +193,8 @@ export function FileManager({
                   </button>
                 </div>
               </div>
-            ))
+            ))}
+            </>
           )}
         </div>
       </div>

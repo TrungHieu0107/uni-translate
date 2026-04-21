@@ -184,10 +184,18 @@ function App() {
             
             <div className="flex-1 overflow-hidden relative">
               {isSearching && (
-                <div className="absolute inset-0 bg-drac-bg-primary/50 backdrop-blur-[2px] z-10 flex items-center justify-center animate-fade-in">
-                  <div className="flex flex-col items-center gap-3">
-                    <div className="w-10 h-10 border-4 border-drac-accent border-t-transparent rounded-full animate-spin"></div>
-                    <span className="text-drac-accent font-bold text-sm tracking-widest animate-pulse">SEARCHING DICTIONARY...</span>
+                <div className="absolute inset-0 bg-drac-bg-primary/20 backdrop-blur-[3px] z-10 flex items-center justify-center animate-fade-in pointer-events-none">
+                  <div className="bg-drac-bg-secondary/60 p-8 rounded-3xl border border-drac-accent/30 shadow-2xl backdrop-blur-xl flex flex-col items-center gap-4">
+                    <div className="relative">
+                      <div className="w-12 h-12 border-2 border-drac-accent/30 rounded-full animate-ping opacity-20"></div>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="w-8 h-8 border-4 border-drac-accent border-t-transparent rounded-full animate-spin"></div>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-center">
+                      <span className="text-[10px] font-black tracking-[0.5em] text-drac-accent animate-pulse uppercase">Searching Index</span>
+                      <span className="text-[8px] font-bold text-drac-text-secondary/50 tracking-widest uppercase mt-1">Direct Memory Access</span>
+                    </div>
                   </div>
                 </div>
               )}

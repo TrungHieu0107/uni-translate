@@ -376,10 +376,16 @@ function SessionRow({
 
         {/* Translation Overlay */}
         {session.isTranslating && (
-          <div className="absolute inset-0 bg-drac-bg-secondary/40 backdrop-blur-[1px] z-[60] flex items-center justify-center animate-fade-in pointer-events-none">
-            <div className="flex flex-col items-center gap-2">
-              <Loader2 className="text-drac-accent animate-spin" size={24} />
-              <span className="text-[10px] font-bold text-drac-accent tracking-widest animate-pulse">TRANSLATING...</span>
+          <div className="absolute inset-0 bg-drac-bg-secondary/20 backdrop-blur-[3px] z-[60] flex items-center justify-center animate-fade-in pointer-events-none">
+            <div className="flex flex-col items-center gap-4 bg-drac-bg-primary/60 p-8 rounded-3xl border border-drac-accent/30 shadow-[0_0_50px_rgba(189,147,249,0.15)] backdrop-blur-xl">
+              <div className="relative">
+                <Loader2 className="text-drac-accent animate-spin" size={32} />
+                <div className="absolute inset-0 bg-drac-accent/20 blur-xl animate-pulse"></div>
+              </div>
+              <div className="flex flex-col items-center gap-1">
+                <span className="text-[11px] font-black text-drac-accent tracking-[0.4em] animate-pulse">PROCESSING</span>
+                <span className="text-[9px] font-bold text-drac-text-secondary/60 tracking-widest">Neural Mapping Engine v2</span>
+              </div>
             </div>
           </div>
         )}
