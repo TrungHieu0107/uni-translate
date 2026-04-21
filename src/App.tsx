@@ -62,7 +62,9 @@ function App() {
     isApplying,
     toggleSheet,
     toggleAllVisible,
-    refreshScan
+    refreshScan,
+    addAutoSelection,
+    removeAutoSelection
   } = useTableSelection(files);
 
   const [isSearching, setIsSearching] = useState(false);
@@ -186,6 +188,9 @@ function App() {
             scanResult={scanResult}
             selectedSheets={selectedSheets}
             onToggleSheet={toggleSheet}
+            onAutoAdd={addAutoSelection}
+            onAutoRemove={removeAutoSelection}
+            isApplying={isApplying}
           />
         )}
 

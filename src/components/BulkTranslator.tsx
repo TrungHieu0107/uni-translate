@@ -1,19 +1,20 @@
 import { useState, useEffect, useMemo, useRef, forwardRef, useCallback } from "react";
-import { Copy, ArrowRightLeft, Languages, Check, Loader2, Plus, Trash2, GripHorizontal, RefreshCw } from "lucide-react";
+import { Copy, ArrowRightLeft, Languages, Check, Loader2, Plus, Trash2, GripHorizontal, RefreshCw, Database } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { SheetMeta, ScanResult } from "../hooks/useDictionary";
 import { useAutoTableDetect } from "../hooks/useAutoTableDetect";
 import { DetectionBanner } from "./DetectionBanner";
 
-interface TranslateSegment {
-  text: string;
-  match_id: number | null;
+interface MatchSpan {
+  start: number;
+  end: number;
+  match_id: number;
 }
 
-interface BulkTranslateResponse {
-  input_segments: TranslateSegment[];
-  output_segments: TranslateSegment[];
-  output_text: string;
+interface BulkTranslateResult {
+  outputText: string;
+  inputSpans: MatchSpan[];
+  outputSpans: MatchSpan[];
 }
 
 interface Session {
@@ -21,8 +22,8 @@ interface Session {
   name: string;
   input: string;
   output: string;
-  inputSegments: TranslateSegment[];
-  outputSegments: TranslateSegment[];
+  inputSpans: MatchSpan[];
+  outputSpans: MatchSpan[];
   direction: "en_to_ja" | "ja_to_en";
   height: number;
   isTranslating: boolean;
@@ -30,21 +31,94 @@ interface Session {
   isInputFocused: boolean;
 }
 
+function decodeBinaryResponse(buffer: ArrayBuffer): BulkTranslateResult {
+  const view = new DataView(buffer);
+  let offset = 0;
+
+  // 1. Output Text
+  const outputTextLen = view.getUint32(offset, true);
+  offset += 4;
+  const outputTextBytes = new Uint8Array(buffer, offset, outputTextLen);
+  const outputText = new TextDecoder().decode(outputTextBytes);
+  offset += outputTextLen;
+
+  // 2. Input Spans
+  const inputSpanCount = view.getUint32(offset, true);
+  offset += 4;
+  const inputSpans: MatchSpan[] = [];
+  for (let i = 0; i < inputSpanCount; i++) {
+    inputSpans.push({
+      start: view.getUint32(offset, true),
+      end: view.getUint32(offset + 4, true),
+      match_id: view.getUint32(offset + 8, true),
+    });
+    offset += 12;
+  }
+
+  // 3. Output Spans
+  const outputSpanCount = view.getUint32(offset, true);
+  offset += 4;
+  const outputSpans: MatchSpan[] = [];
+  for (let i = 0; i < outputSpanCount; i++) {
+    outputSpans.push({
+      start: view.getUint32(offset, true),
+      end: view.getUint32(offset + 4, true),
+      match_id: view.getUint32(offset + 8, true),
+    });
+    offset += 12;
+  }
+
+  return { outputText, inputSpans, outputSpans };
+}
+
 const SegmentedViewer = forwardRef<HTMLDivElement, { 
-  segments: TranslateSegment[], 
+  text: string,
+  spans: MatchSpan[], 
   className?: string, 
   placeholder?: string,
   onManualClick?: () => void,
   hoverMatchId: number | null,
   setHoverMatchId: (id: number | null) => void,
   onScroll?: (e: React.UIEvent<HTMLDivElement>) => void
-}>(({ segments, className, placeholder, onManualClick, hoverMatchId, setHoverMatchId, onScroll }, ref) => {
-  if (segments.length === 0 && placeholder) {
+}>(({ text, spans, className, placeholder, onManualClick, hoverMatchId, setHoverMatchId, onScroll }, ref) => {
+  if (!text && placeholder) {
     return (
       <div className={`p-4 text-drac-text-secondary italic text-sm ${className}`} onClick={onManualClick}>
         {placeholder}
       </div>
     );
+  }
+
+  // Render text segments by splitting on-the-fly using spans
+  const elements: JSX.Element[] = [];
+  let lastPos = 0;
+
+  spans.forEach((span, idx) => {
+    // Add plain text before match
+    if (span.start > lastPos) {
+      elements.push(<span key={`p-${idx}`}>{text.slice(lastPos, span.start)}</span>);
+    }
+    // Add highlighted match
+    elements.push(
+      <span
+        key={`m-${idx}`}
+        className={`transition-all duration-150 rounded text-drac-accent font-bold cursor-help ${
+          hoverMatchId !== null && span.match_id === hoverMatchId 
+            ? "bg-drac-accent/30 text-drac-accent-hover ring-1 ring-drac-accent/50" 
+            : ""
+        }`}
+        onMouseEnter={() => setHoverMatchId(span.match_id)}
+        onMouseLeave={() => setHoverMatchId(null)}
+      >
+        {text.slice(span.start, span.end)}
+      </span>
+    );
+    lastPos = span.end;
+  });
+
+  // Add remaining text
+  if (lastPos < text.length) {
+    elements.push(<span key="final">{text.slice(lastPos)}</span>);
   }
 
   return (
@@ -54,28 +128,7 @@ const SegmentedViewer = forwardRef<HTMLDivElement, {
       onClick={onManualClick}
       onScroll={onScroll}
     >
-      {segments.map((seg, i) => (
-        <span
-          key={i}
-          className={`transition-all duration-150 rounded ${
-            seg.match_id !== null 
-              ? "text-drac-accent font-bold cursor-help" 
-              : ""
-          } ${
-            hoverMatchId !== null && seg.match_id === hoverMatchId 
-              ? "bg-drac-accent/30 text-drac-accent-hover ring-1 ring-drac-accent/50" 
-              : ""
-          }`}
-          onMouseEnter={() => {
-            if (seg.match_id !== null) setHoverMatchId(seg.match_id);
-          }}
-          onMouseLeave={() => {
-            if (seg.match_id !== null) setHoverMatchId(null);
-          }}
-        >
-          {seg.text}
-        </span>
-      ))}
+      {elements}
     </div>
   );
 });
@@ -96,7 +149,8 @@ function SessionRow({
   startResize,
   knownSheets,
   activeSelection,
-  onSelectionAdd
+  onAutoAdd,
+  onAutoRemove
 }: { 
   session: Session, 
   index: number, 
@@ -111,7 +165,8 @@ function SessionRow({
   startResize: (id: string, startHeight: number, clientY: number) => void,
   knownSheets: SheetMeta[],
   activeSelection: Set<string>,
-  onSelectionAdd: (sheetNames: string[]) => Promise<void>
+  onAutoAdd: (sheetNames: string[]) => Promise<void>,
+  onAutoRemove: (sheetNames: string[]) => Promise<void>
 }) {
   const inputRef = useRef<any>(null);
   const outputRef = useRef<HTMLDivElement>(null);
@@ -119,37 +174,35 @@ function SessionRow({
 
   const {
     detectionResult,
-    pendingChecked,
-    handlePaste,
-    applyAndTranslate,
-    translateWithoutApplying,
+    handleInput,
     dismissBanner,
-    togglePending,
   } = useAutoTableDetect(
     knownSheets,
     activeSelection,
-    onSelectionAdd,
-    async () => handleTranslate(session.id)
+    onAutoAdd,
+    onAutoRemove
   );
 
-  // Auto-detect on input change with a small delay
   useEffect(() => {
-    if (!session.input.trim()) {
-      dismissBanner();
-      return;
+    handleInput(session.input);
+  }, [session.input, handleInput]);
+
+  // Auto-detect direction based on input content
+  useEffect(() => {
+    if (!session.input.trim()) return;
+    
+    const hasJapanese = /[^\x00-\x7F]/.test(session.input); // Simple check for non-ASCII
+    const targetDirection = hasJapanese ? "ja_to_en" : "en_to_ja";
+    
+    if (session.direction !== targetDirection) {
+      updateSession(session.id, { direction: targetDirection });
     }
-    
-    const timer = setTimeout(() => {
-      handlePaste(session.input);
-    }, 800); // 800ms debounce
-    
-    return () => clearTimeout(timer);
-  }, [session.input, handlePaste, dismissBanner]);
+  }, [session.input, session.id]); // Note: only triggers on input change
 
   const onPaste = (e: React.ClipboardEvent) => {
     const text = e.clipboardData.getData('text');
     if (text) {
-      handlePaste(text);
+      handleInput(text);
     }
   };
 
@@ -206,7 +259,7 @@ function SessionRow({
                 {session.isTranslating ? <Loader2 size={12} /> : <Languages size={12} />}
               </button>
             </div>
-            {session.isInputFocused || !session.inputSegments.length || session.inputSegments.length <= 1 ? (
+            {session.isInputFocused || !session.inputSpans.length ? (
               <textarea
                 ref={inputRef}
                 className="flex-1 w-full bg-transparent p-3 resize-none outline-none font-mono text-sm leading-relaxed scrollbar-dracula"
@@ -224,7 +277,8 @@ function SessionRow({
             ) : (
               <SegmentedViewer 
                 ref={inputRef}
-                segments={session.inputSegments} 
+                text={session.input}
+                spans={session.inputSpans}
                 className="flex-1 cursor-text"
                 onManualClick={() => updateSession(session.id, { isInputFocused: true })}
                 hoverMatchId={hoverMatchId}
@@ -259,7 +313,8 @@ function SessionRow({
             </div>
             <SegmentedViewer 
               ref={outputRef}
-              segments={session.outputSegments}
+              text={session.output}
+              spans={session.outputSpans}
               className="flex-1"
               placeholder="Translation will appear here..."
               hoverMatchId={hoverMatchId}
@@ -269,14 +324,15 @@ function SessionRow({
           </div>
         </div>
 
-        {/* Detection Banner */}
+        {/* Detection Banner (Auto-applied notification) */}
         {detectionResult && (
           <DetectionBanner 
             result={detectionResult}
-            pendingChecked={pendingChecked}
-            onToggle={togglePending}
-            onApplyAndTranslate={applyAndTranslate}
-            onTranslateOnly={translateWithoutApplying}
+            isApplied={true}
+            pendingChecked={new Set()}
+            onToggle={() => {}}
+            onApplyAndTranslate={() => {}}
+            onTranslateOnly={() => {}}
             onDismiss={dismissBanner}
           />
         )}
@@ -341,12 +397,18 @@ export function BulkTranslator({
   disabled,
   scanResult,
   selectedSheets,
-  onToggleSheet
+  onToggleSheet,
+  onAutoAdd,
+  onAutoRemove,
+  isApplying
 }: { 
   disabled: boolean,
   scanResult: ScanResult | null,
   selectedSheets: string[],
-  onToggleSheet: (cacheKey: string) => void
+  onToggleSheet: (cacheKey: string) => void,
+  onAutoAdd: (sheetNames: string[]) => Promise<void>,
+  onAutoRemove: (sheetNames: string[]) => Promise<void>,
+  isApplying: boolean
 }) {
   const [sessions, setSessions] = useState<Session[]>(() => {
     try {
@@ -359,8 +421,8 @@ export function BulkTranslator({
             isTranslating: false, 
             copied: false, 
             isInputFocused: false,
-            inputSegments: s.inputSegments || [{ text: s.input, match_id: null }],
-            outputSegments: s.outputSegments || [{ text: s.output, match_id: null }]
+            inputSpans: s.inputSpans || [],
+            outputSpans: s.outputSpans || []
           }));
         }
       }
@@ -378,8 +440,8 @@ export function BulkTranslator({
         isTranslating: false,
         copied: false,
         isInputFocused: false,
-        inputSegments: [],
-        outputSegments: [],
+        inputSpans: [],
+        outputSpans: [],
       },
     ];
   });
@@ -411,8 +473,8 @@ export function BulkTranslator({
       isTranslating: false,
       copied: false,
       isInputFocused: false,
-      inputSegments: [],
-      outputSegments: [],
+      inputSpans: [],
+      outputSpans: [],
     };
     setSessions([...sessions, newSession]);
   };
@@ -449,14 +511,19 @@ export function BulkTranslator({
 
     try {
       updateSession(id, { isTranslating: true });
-      const result = await invoke<BulkTranslateResponse>("bulk_translate", {
+      const res = await invoke<number[]>("bulk_translate_v2", {
         text: session.input,
         direction: session.direction,
       });
+      
+      // Tauri returns Vec<u8> as a number array, convert to ArrayBuffer
+      const uint8 = new Uint8Array(res);
+      const result = decodeBinaryResponse(uint8.buffer);
+      
       updateSession(id, { 
-        output: result.output_text,
-        inputSegments: result.input_segments,
-        outputSegments: result.output_segments
+        output: result.outputText,
+        inputSpans: result.inputSpans,
+        outputSpans: result.outputSpans
       });
     } catch (err) {
       console.error("Translation failed:", err);
@@ -533,13 +600,16 @@ export function BulkTranslator({
   }, [resizingId]);
 
   useEffect(() => {
+    // Don't trigger translation while the backend is busy rebuilding the dictionary
+    if (isApplying) return;
+
     sessions.forEach((session) => {
       if (!session.input.trim()) {
-        if (session.output !== "" || session.outputSegments.length > 0) {
+        if (session.output !== "" || session.outputSpans.length > 0) {
           updateSession(session.id, { 
             output: "", 
-            inputSegments: [], 
-            outputSegments: [] 
+            inputSpans: [], 
+            outputSpans: [] 
           });
         }
         return;
@@ -555,13 +625,31 @@ export function BulkTranslator({
     return () => {
       Object.values(timersRef.current).forEach(window.clearTimeout);
     };
-  }, [sessions.map(s => s.input).join('|'), sessions.map(s => s.direction).join('|')]);
+  }, [
+    sessions.map(s => s.input).join('|'), 
+    sessions.map(s => s.direction).join('|'),
+    selectedSheets.join('|'),
+    isApplying
+  ]);
 
   return (
     <div className="flex flex-col h-full w-full bg-drac-bg-primary text-drac-text-primary overflow-hidden">
+      {/* Header with Stats */}
+      <div className="px-6 py-3 bg-drac-bg-tertiary/30 border-b border-drac-border flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Languages size={18} className="text-drac-accent" />
+          <h2 className="text-sm font-bold tracking-tight">Bulk Translator</h2>
+          <div className="flex items-center gap-2 px-2 py-0.5 bg-drac-accent/10 border border-drac-accent/20 rounded-full">
+            <Database size={10} className="text-drac-accent" />
+            <span className="text-[10px] font-mono text-drac-accent">
+              {scanResult ? selectedSheets.length : 0} Tables • {sessions.reduce((acc, s) => acc + s.outputSpans.length, 0)} Matches
+            </span>
+          </div>
+        </div>
+      </div>
+
       <div className="flex-1 overflow-y-auto scrollbar-dracula p-6 relative">
         <div className="flex flex-col gap-6 pb-32 w-full pt-4">
-
           {sessions.map((session, index) => (
             <SessionRow 
               key={session.id}
@@ -578,7 +666,8 @@ export function BulkTranslator({
               startResize={startResize}
               knownSheets={knownSheets}
               activeSelection={activeSelectionSet}
-              onSelectionAdd={onSelectionAdd}
+              onAutoAdd={onAutoAdd}
+              onAutoRemove={onAutoRemove}
             />
           ))}
 

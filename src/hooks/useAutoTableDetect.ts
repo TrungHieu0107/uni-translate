@@ -1,78 +1,66 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { SheetMeta } from "./useDictionary";
 import { DetectionResult, detectTableNames } from "../lib/tableNameDetector";
 
 /**
  * Hook to manage auto-detection of table names on paste.
+ * Now fully automatic: detects and applies without user intervention.
  */
 export function useAutoTableDetect(
   knownSheets: SheetMeta[],
-  activeSelection: Set<string>, // active cache keys
+  activeSelection: Set<string>,
   onSelectionAdd: (sheetNames: string[]) => Promise<void>,
-  onTranslate: () => Promise<void>,
+  onSelectionRemove: (sheetNames: string[]) => Promise<void>,
 ) {
   const [detectionResult, setDetectionResult] = useState<DetectionResult | null>(null);
+  const lastAppliedRef = useRef<string[]>([]);
   
-  // User's checkbox state within the banner (table names)
-  const [pendingChecked, setPendingChecked] = useState<Set<string>>(new Set());
-
-  const handlePaste = useCallback((text: string) => {
+  const handleInput = useCallback(async (text: string) => {
     const result = detectTableNames(text, knownSheets, activeSelection);
+    
+    // Find what's actually new in this specific input
+    const matchedNames = result.matched.map(t => t.tableName);
+    
+    // 1. Identify tables that are no longer in this text (to be removed)
+    const toRemove = lastAppliedRef.current.filter(name => !matchedNames.includes(name));
+    if (toRemove.length > 0) {
+      await onSelectionRemove(toRemove);
+    }
 
-    // Only show banner if there are NEW tables to add
-    const hasNew = result.matched.some(t => !t.alreadySelected);
-    if (hasNew) {
+    // 2. Identify tables that are newly found in this text (to be added)
+    // Note: detectTableNames already filtered against activeSelection, 
+    // but we also filter against what we already applied in this session
+    const toAdd = matchedNames.filter(name => !lastAppliedRef.current.includes(name));
+    if (toAdd.length > 0) {
+      await onSelectionAdd(toAdd);
+    }
+
+    lastAppliedRef.current = matchedNames;
+
+    // Show banner only if we have active matches or unmatched warnings
+    if (result.matched.length > 0 || result.unmatched.length > 0) {
       setDetectionResult(result);
-      // Pre-check all new tables by default
-      setPendingChecked(
-        new Set(
-          result.matched
-            .filter(t => !t.alreadySelected)
-            .map(t => t.tableName)
-        )
-      );
     } else {
-      // If no new tables detected, we don't show the banner
       setDetectionResult(null);
     }
-  }, [knownSheets, activeSelection]);
-
-  const applyAndTranslate = useCallback(async () => {
-    if (pendingChecked.size > 0) {
-      await onSelectionAdd(Array.from(pendingChecked));
-    }
-    setDetectionResult(null);
-    await onTranslate();
-  }, [pendingChecked, onSelectionAdd, onTranslate]);
-
-  const translateWithoutApplying = useCallback(async () => {
-    setDetectionResult(null);
-    await onTranslate();
-  }, [onTranslate]);
+  }, [knownSheets, activeSelection, onSelectionAdd, onSelectionRemove]);
 
   const dismissBanner = useCallback(() => {
     setDetectionResult(null);
   }, []);
 
-  const togglePending = useCallback((tableName: string) => {
-    setPendingChecked(prev => {
-      const next = new Set(prev);
-      if (next.has(tableName)) {
-        next.delete(tableName);
-      } else {
-        next.add(tableName);
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (lastAppliedRef.current.length > 0) {
+        onSelectionRemove(lastAppliedRef.current);
       }
-      return next;
-    });
-  }, []);
+    };
+  }, [onSelectionRemove]);
 
   return {
     detectionResult,
-    pendingChecked,
-    handlePaste,
-    applyAndTranslate,
-    translateWithoutApplying,
+    handleInput,
     dismissBanner,
-    togglePending,
   };
 }

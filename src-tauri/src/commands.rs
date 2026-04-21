@@ -116,20 +116,11 @@ pub async fn update_table_selection(
     let (config, stats) = {
         let mut s = state.0.lock().map_err(|e| e.to_string())?;
         
-        let new_set: HashSet<String> = selected_cache_keys.into_iter().collect();
-        let current_set = s.active_table_sheets.clone();
-
-        let to_add: Vec<String> = new_set.difference(&current_set).cloned().collect();
-        let to_remove: Vec<String> = current_set.difference(&new_set).cloned().collect();
-
-        for key in to_remove {
-            s.remove_sheet_incremental(&key);
-            s.active_table_sheets.remove(&key);
-        }
-        for key in to_add {
-            s.add_sheet_incremental(&app_handle, &key);
-            s.active_table_sheets.insert(key);
-        }
+        // Batch update active sheets
+        s.active_table_sheets = selected_cache_keys.into_iter().collect();
+        
+        // One single optimized parallel rebuild
+        s.rebuild_dictionary(&app_handle);
         
         (config_from_state(&s), DictionaryStats {
             total_entries: s.ja_to_en.len(),
@@ -284,34 +275,24 @@ pub async fn reset_dictionary(state: State<'_, AppStateWrapper>, app_handle: App
     Ok(())
 }
 
-#[derive(Serialize)]
-pub struct TranslateSegment {
-    pub text: String,
-    pub match_id: Option<usize>,
-}
-
-#[derive(Serialize)]
-pub struct BulkTranslateResponse {
-    pub input_segments: Vec<TranslateSegment>,
-    pub output_segments: Vec<TranslateSegment>,
-    pub output_text: String,
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct MatchSpan {
+    pub start: u32,
+    pub end: u32,
+    pub match_id: u32,
 }
 
 #[tauri::command]
-pub async fn bulk_translate(
-    text: String, 
-    direction: String, 
-    state: State<'_, AppStateWrapper>
-) -> Result<BulkTranslateResponse, String> {
-    let unescaped_text = crate::parser::unescape(&text);
-    let normalized_text = crate::parser::normalize_ja(&unescaped_text);
+pub async fn bulk_translate_v2(
+    text: String,
+    direction: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<Vec<u8>, String> {
+    let normalized_text = crate::parser::normalize_ja(&text);
     
     if normalized_text.trim().is_empty() {
-        return Ok(BulkTranslateResponse {
-            input_segments: vec![TranslateSegment { text: normalized_text.clone(), match_id: None }],
-            output_segments: vec![TranslateSegment { text: normalized_text.clone(), match_id: None }],
-            output_text: normalized_text,
-        });
+        // Return empty buffer logic: [text_len:0][span_count_in:0][span_count_out:0]
+        return Ok(vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
     }
 
     // 1. Get Automaton and Replacements from State
@@ -330,11 +311,25 @@ pub async fn bulk_translate(
 
     // 2. Perform replacement in a blocking thread
     let is_en_to_ja = direction == "en_to_ja";
-    let result = tokio::task::spawn_blocking(move || {
-        let mut input_segments = Vec::new();
-        let mut output_segments = Vec::new();
+    let result_buffer = tokio::task::spawn_blocking(move || {
+        let mut input_spans = Vec::new();
+        let mut output_spans = Vec::new();
+        let mut output_text = String::with_capacity(normalized_text.len());
         let mut last_match_end = 0;
         let text_bytes = normalized_text.as_bytes();
+
+        let mut match_counter = 0;
+
+        // Pre-calculate character offsets for input to avoid O(N^2)
+        let input_char_offsets: Vec<usize> = normalized_text
+            .char_indices()
+            .map(|(i, _)| i)
+            .collect();
+        
+        // Helper to find char index from byte index
+        let get_char_idx = |byte_idx: usize, offsets: &[usize]| -> u32 {
+            offsets.iter().position(|&i| i == byte_idx).unwrap_or(offsets.len()) as u32
+        };
 
         for mat in automaton.find_iter(&normalized_text) {
             let start = mat.start();
@@ -343,7 +338,6 @@ pub async fn bulk_translate(
 
             let mut is_valid = true;
             if is_en_to_ja {
-                // Whole word match check for English
                 let prev_char_valid = start == 0 || (!text_bytes[start - 1].is_ascii_alphanumeric() && text_bytes[start - 1] != b'_');
                 let next_char_valid = end == normalized_text.len() || (!text_bytes[end].is_ascii_alphanumeric() && text_bytes[end] != b'_');
                 if !prev_char_valid || !next_char_valid {
@@ -352,41 +346,77 @@ pub async fn bulk_translate(
             }
 
             if is_valid {
-                // Add previous unmatched text
                 if start > last_match_end {
-                    let plain_text = normalized_text[last_match_end..start].to_string();
-                    input_segments.push(TranslateSegment { text: plain_text.clone(), match_id: None });
-                    output_segments.push(TranslateSegment { text: plain_text, match_id: None });
+                    output_text.push_str(&normalized_text[last_match_end..start]);
                 }
                 
-                // Add matched segment
-                let original_match = normalized_text[start..end].to_string();
-                let translated_match = replacements[pattern_id].clone();
+                // Input span (Convert byte index to character index)
+                let char_start = get_char_idx(start, &input_char_offsets);
+                let char_end = get_char_idx(end, &input_char_offsets);
+
+                input_spans.push(MatchSpan {
+                    start: char_start,
+                    end: char_end,
+                    match_id: match_counter,
+                });
+
+                // Output span (Convert byte index to character index)
+                let translated_match = &replacements[pattern_id];
+                let out_char_start = output_text.chars().count() as u32;
+                output_text.push_str(translated_match);
+                let out_char_end = output_text.chars().count() as u32;
+
+                output_spans.push(MatchSpan {
+                    start: out_char_start,
+                    end: out_char_end,
+                    match_id: match_counter,
+                });
                 
-                input_segments.push(TranslateSegment { text: original_match, match_id: Some(pattern_id) });
-                output_segments.push(TranslateSegment { text: translated_match, match_id: Some(pattern_id) });
-                
+                match_counter += 1;
                 last_match_end = end;
             }
         }
 
-        // Add remaining text
         if last_match_end < normalized_text.len() {
-            let final_text = normalized_text[last_match_end..].to_string();
-            input_segments.push(TranslateSegment { text: final_text.clone(), match_id: None });
-            output_segments.push(TranslateSegment { text: final_text, match_id: None });
+            output_text.push_str(&normalized_text[last_match_end..]);
         }
 
-        let output_text = output_segments.iter().map(|s| s.text.as_str()).collect::<Vec<_>>().join("");
+        // Binary Protocol Construction (Option B - Flat buffer)
+        // [4 bytes: output_text_len]
+        // [N bytes: output_text UTF-8]
+        // [4 bytes: input_span_count]
+        // [M * 12 bytes: input_spans]
+        // [4 bytes: output_span_count]
+        // [K * 12 bytes: output_spans]
+        
+        let out_bytes = output_text.as_bytes();
+        let total_size = 4 + out_bytes.len() + 4 + (input_spans.len() * 12) + 4 + (output_spans.len() * 12);
+        let mut buffer = Vec::with_capacity(total_size);
 
-        Ok::<BulkTranslateResponse, String>(BulkTranslateResponse {
-            input_segments,
-            output_segments,
-            output_text,
-        })
+        // 1. Output text
+        buffer.extend_from_slice(&(out_bytes.len() as u32).to_le_bytes());
+        buffer.extend_from_slice(out_bytes);
+
+        // 2. Input spans
+        buffer.extend_from_slice(&(input_spans.len() as u32).to_le_bytes());
+        for span in input_spans {
+            buffer.extend_from_slice(&span.start.to_le_bytes());
+            buffer.extend_from_slice(&span.end.to_le_bytes());
+            buffer.extend_from_slice(&span.match_id.to_le_bytes());
+        }
+
+        // 3. Output spans
+        buffer.extend_from_slice(&(output_spans.len() as u32).to_le_bytes());
+        for span in output_spans {
+            buffer.extend_from_slice(&span.start.to_le_bytes());
+            buffer.extend_from_slice(&span.end.to_le_bytes());
+            buffer.extend_from_slice(&span.match_id.to_le_bytes());
+        }
+
+        Ok::<Vec<u8>, String>(buffer)
     })
     .await
     .map_err(|e| format!("Translation task failed: {}", e))??;
 
-    Ok(result)
+    Ok(result_buffer)
 }

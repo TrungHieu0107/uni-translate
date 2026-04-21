@@ -48,7 +48,7 @@ pub fn run() {
             commands::list_loaded_files,
             commands::remove_file,
             commands::reset_dictionary,
-            commands::bulk_translate,
+            commands::bulk_translate_v2,
             commands::toggle_file_enabled,
             commands::toggle_all_files
         ])

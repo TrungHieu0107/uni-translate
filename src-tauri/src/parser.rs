@@ -1,4 +1,5 @@
 use crate::state::{DictionaryEntry, FileInfo, SheetCache, SheetKind, SheetMeta};
+use rayon::prelude::*;
 use crate::events::{ParseProgressEvent};
 use calamine::{open_workbook, Data, Reader, Xlsx};
 use std::path::Path;
@@ -41,7 +42,7 @@ pub fn parse_excel_file_parallel(
     let file_name = extract_file_name(file_path);
 
     // 1. Check disk cache
-    let mut workbook: Xlsx<_> = open_workbook(file_path)
+    let workbook: Xlsx<_> = open_workbook(file_path)
         .map_err(|e| format!("Cannot open {}: {}", file_name, e))?;
 
     let sheet_names = workbook.sheet_names().to_vec();
@@ -54,11 +55,11 @@ pub fn parse_excel_file_parallel(
 
     for name in &sheet_names {
         let key = format!("{}|{}", file_path, name);
-        if let Some(path) = crate::storage::get_sheet_cache_path(&app_handle, &key) {
-            if path.exists() {
+        if let Some(cache_file_path) = crate::storage::get_sheet_cache_path(&app_handle, &key) {
+            if cache_file_path.exists() {
                 // Read only the header part of the cache if possible, or just deserialize it
                 // For now, deserialize but then discard the entries
-                if let Ok(bin) = std::fs::read(path) {
+                if let Ok(bin) = std::fs::read(&cache_file_path) {
                     if let Ok(sheet_cache) = bincode::deserialize::<SheetCache>(&bin) {
                         let meta = SheetMeta {
                             name: sheet_cache.sheet_name.clone(),
@@ -68,6 +69,7 @@ pub fn parse_excel_file_parallel(
                             },
                             entry_count: sheet_cache.entry_count,
                             cache_key: key.clone(),
+                            cache_path: cache_file_path.to_string_lossy().to_string(),
                         };
                         total_entries += sheet_cache.entry_count;
                         if sheet_cache.kind == SheetKind::Base { base_sheets.push(meta); }
@@ -81,11 +83,13 @@ pub fn parse_excel_file_parallel(
     }
 
     // 2. Parse remaining sheets
-    let mut done = total_sheets - sheets_to_parse.len();
+    let done = total_sheets - sheets_to_parse.len();
     emit_progress(&app_handle, &file_name, done, total_sheets, "Starting...");
     
     if !sheets_to_parse.is_empty() {
-        for sheet_name in sheets_to_parse {
+        let results: Vec<SheetMeta> = sheets_to_parse.into_par_iter().enumerate().filter_map(|(idx, sheet_name)| {
+            // Each thread needs its own workbook handle for parallel reading
+            let mut workbook: Xlsx<_> = open_workbook(file_path).ok()?;
             if let Ok(range) = workbook.worksheet_range(&sheet_name) {
                 let kind = classify_sheet(&sheet_name);
                 
@@ -102,13 +106,18 @@ pub fn parse_excel_file_parallel(
                 };
 
                 let cache_key = format!("{}|{}", file_path, sheet_name);
-                if let Some(path) = crate::storage::get_sheet_cache_path(&app_handle, &cache_key) {
+                if let Some(cache_file_path) = crate::storage::get_sheet_cache_path(&app_handle, &cache_key) {
                     if let Ok(bin) = bincode::serialize(&sheet_cache) {
-                        let _ = std::fs::write(path, bin);
+                        let _ = std::fs::write(&cache_file_path, bin);
                     }
                 }
 
-                let meta = SheetMeta {
+                // Periodic progress emit
+                if idx % 50 == 0 {
+                    emit_progress(&app_handle, &file_name, done + idx, total_sheets, &sheet_name);
+                }
+
+                Some(SheetMeta {
                     name: sheet_name.clone(),
                     kind: match kind {
                         SheetKind::Base => "Base".to_string(),
@@ -116,14 +125,19 @@ pub fn parse_excel_file_parallel(
                     },
                     entry_count,
                     cache_key,
-                };
-                total_entries += entry_count;
-                if kind == SheetKind::Base { base_sheets.push(meta); }
-                else { table_sheets.push(meta); }
+                    cache_path: crate::storage::get_sheet_cache_path(&app_handle, &format!("{}|{}", file_path, sheet_name))
+                        .map(|p| p.to_string_lossy().to_string())
+                        .unwrap_or_default(),
+                })
+            } else {
+                None
             }
-            
-            done += 1;
-            emit_progress(&app_handle, &file_name, done, total_sheets, &sheet_name);
+        }).collect();
+
+        for meta in results {
+            total_entries += meta.entry_count;
+            if meta.kind == "Base" { base_sheets.push(meta); }
+            else { table_sheets.push(meta); }
         }
     }
 

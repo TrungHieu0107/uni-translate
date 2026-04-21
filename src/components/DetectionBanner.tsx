@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, CheckCircle, AlertCircle, X, CheckSquare, Square, ChevronDown, ChevronUp, Zap } from 'lucide-react';
 import { DetectionResult, DetectionMethod } from '../lib/tableNameDetector';
 
@@ -9,6 +9,7 @@ interface DetectionBannerProps {
   onApplyAndTranslate: () => void;
   onTranslateOnly: () => void;
   onDismiss: () => void;
+  isApplied?: boolean;
 }
 
 const MethodBadge = ({ method }: { method: DetectionMethod }) => (
@@ -28,47 +29,67 @@ export const DetectionBanner: React.FC<DetectionBannerProps> = ({
   onApplyAndTranslate,
   onTranslateOnly,
   onDismiss,
+  isApplied = false,
 }) => {
   const [showAlreadySelected, setShowAlreadySelected] = useState(false);
+  const [isMainCollapsed, setIsMainCollapsed] = useState(isApplied);
   
+  // Sync collapse state with isApplied when it changes to true
+  useEffect(() => {
+    if (isApplied) setIsMainCollapsed(true);
+  }, [isApplied]);
+
   const newTables = result.matched.filter(t => !t.alreadySelected);
   const alreadySelected = result.matched.filter(t => t.alreadySelected);
   
   if (newTables.length === 0 && result.unmatched.length === 0 && alreadySelected.length === 0) return null;
 
   return (
-    <div className="mx-4 my-2 p-4 bg-drac-bg-tertiary/50 border border-drac-accent/30 rounded-lg shadow-xl animate-slide-up backdrop-blur-md">
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex items-center gap-2 text-drac-accent font-bold">
-          <Search size={18} className="animate-pulse" />
-          <span className="tracking-tight">Tables detected in your text</span>
+    <div className={`mx-4 my-2 p-4 border rounded-lg shadow-xl animate-slide-up backdrop-blur-md transition-all duration-300 ${
+      isApplied 
+        ? "bg-drac-success/10 border-drac-success/30 py-2" 
+        : "bg-drac-bg-tertiary/50 border-drac-accent/30"
+    }`}>
+      <div className="flex items-center justify-between">
+        <div 
+          className={`flex items-center gap-2 font-bold cursor-pointer hover:opacity-80 transition-opacity ${
+            isApplied ? "text-drac-success" : "text-drac-accent"
+          }`}
+          onClick={() => setIsMainCollapsed(!isMainCollapsed)}
+        >
+          {isApplied ? <CheckCircle size={18} /> : <Search size={18} className="animate-pulse" />}
+          <span className="tracking-tight">
+            {isApplied ? "Applied table selection" : "Tables detected in your text"}
+          </span>
+          {isMainCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+          {isMainCollapsed && !isApplied && (
+            <span className="text-[10px] bg-drac-accent/20 px-2 py-0.5 rounded-full ml-2">
+              {newTables.length + alreadySelected.length} found
+            </span>
+          )}
         </div>
         <button onClick={onDismiss} className="text-drac-text-secondary hover:text-drac-text-primary transition-colors">
           <X size={18} />
         </button>
       </div>
 
-      <div className="space-y-4">
+      {!isMainCollapsed && (
+        <div className="space-y-4 mt-4 animate-fade-in">
         {/* NEW TABLES */}
         {newTables.length > 0 && (
           <div className="space-y-2">
-            <div className="text-[10px] font-bold text-drac-accent uppercase tracking-widest flex items-center gap-2">
-              <span className="w-1.5 h-1.5 bg-drac-accent rounded-full" />
-              New - will be added to selection
+            <div className="text-[10px] font-bold text-drac-success uppercase tracking-widest flex items-center gap-2">
+              <span className="w-1.5 h-1.5 bg-drac-success rounded-full" />
+              Automatically loaded from your text
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {newTables.map((t) => (
                 <div 
                   key={t.tableName}
-                  className={`flex items-center gap-3 p-2 rounded-md border transition-all cursor-pointer group ${
-                    pendingChecked.has(t.tableName) 
-                      ? "bg-drac-accent/10 border-drac-accent/40" 
-                      : "bg-drac-bg-secondary/40 border-drac-border hover:border-drac-text-secondary"
-                  }`}
-                  onClick={() => onToggle(t.tableName)}
+                  className="flex items-center gap-3 p-2 rounded-md border bg-drac-success/5 border-drac-success/20 group"
                 >
-                  <div className={pendingChecked.has(t.tableName) ? "text-drac-accent" : "text-drac-text-secondary"}>
-                    {pendingChecked.has(t.tableName) ? <CheckSquare size={16} /> : <Square size={16} />}
+                  <div className="text-drac-success">
+                    <CheckSquare size={16} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
@@ -82,29 +103,6 @@ export const DetectionBanner: React.FC<DetectionBannerProps> = ({
                 </div>
               ))}
             </div>
-          </div>
-        )}
-
-        {/* ALREADY SELECTED */}
-        {alreadySelected.length > 0 && (
-          <div className="space-y-2">
-            <button 
-              onClick={() => setShowAlreadySelected(!showAlreadySelected)}
-              className="text-[10px] font-bold text-drac-success uppercase tracking-widest flex items-center gap-2 hover:opacity-80 transition-opacity"
-            >
-              <CheckCircle size={12} />
-              Already in selection ({alreadySelected.length})
-              {showAlreadySelected ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-            </button>
-            {showAlreadySelected && (
-              <div className="flex flex-wrap gap-2 animate-fade-in">
-                {alreadySelected.map(t => (
-                  <span key={t.tableName} className="text-xs px-2 py-1 bg-drac-success/10 text-drac-success border border-drac-success/20 rounded-md">
-                    {t.tableName}
-                  </span>
-                ))}
-              </div>
-            )}
           </div>
         )}
 
@@ -122,24 +120,8 @@ export const DetectionBanner: React.FC<DetectionBannerProps> = ({
             </div>
           </div>
         )}
-
-        {/* ACTIONS */}
-        <div className="flex flex-wrap items-center gap-3 pt-2">
-          <button 
-            onClick={onApplyAndTranslate}
-            className="flex items-center gap-2 px-4 py-2 bg-drac-accent text-drac-bg-primary font-bold rounded-md hover:bg-drac-accent-hover transition-all shadow-lg shadow-drac-accent/20"
-          >
-            <Zap size={16} />
-            Apply & Translate
-          </button>
-          <button 
-            onClick={onTranslateOnly}
-            className="px-4 py-2 bg-drac-bg-tertiary text-drac-text-primary border border-drac-border rounded-md hover:bg-drac-bg-secondary transition-all"
-          >
-            Translate Without Applying
-          </button>
-        </div>
       </div>
+      )}
     </div>
   );
 };

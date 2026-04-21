@@ -35,6 +35,7 @@ pub struct SheetMeta {
     pub entry_count: usize,
     pub kind: String, // "Base" | "Table"
     pub cache_key: String, // "path|sheet"
+    pub cache_path: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -82,95 +83,84 @@ impl AppState {
             sheet_owned_en_keys: HashMap::new(),
         }
     }
+}
 
-    pub fn rebuild_dictionary(&mut self, app: &AppHandle) {
+use rayon::prelude::*;
+
+impl AppState {
+    pub fn rebuild_dictionary(&mut self, _app: &AppHandle) {
+        println!("Rebuilding dictionary...");
+        let start = std::time::Instant::now();
+        
+        // 1. Clear current dictionaries
         self.ja_to_en.clear();
         self.en_to_ja.clear();
         self.sheet_owned_ja_keys.clear();
         self.sheet_owned_en_keys.clear();
 
-        println!("Rebuilding dictionary...");
-
-        // 1. Gather enabled sheets, prioritized: Base sheets first
-        let mut base_keys = Vec::new();
-        let mut table_keys = Vec::new();
+        let mut base_info = Vec::new();
+        let mut table_info = Vec::new();
 
         for file in self.loaded_files.values() {
             if !file.enabled { continue; }
-            
-            // Collect Base sheets
             for sheet in &file.base_sheets {
-                base_keys.push(sheet.cache_key.clone());
+                base_info.push((sheet.cache_key.clone(), sheet.cache_path.clone()));
             }
-            
-            // Collect Active Table sheets
             for sheet in &file.table_sheets {
                 if self.active_table_sheets.contains(&sheet.cache_key) {
-                    table_keys.push(sheet.cache_key.clone());
+                    table_info.push((sheet.cache_key.clone(), sheet.cache_path.clone()));
                 }
             }
         }
 
-        println!("Loading {} base sheets and {} table sheets", base_keys.len(), table_keys.len());
+        println!("Loading {} base sheets and {} table sheets", base_info.len(), table_info.len());
 
-        // 2. Load from disk and merge - Base sheets first
-        for cache_key in base_keys {
-            self.load_and_merge_sheet(app, &cache_key);
-        }
-        
-        // Then Table sheets (can overwrite base if conflict, or we can keep it as is)
-        for cache_key in table_keys {
-            self.load_and_merge_sheet(app, &cache_key);
-        }
+        // 3. Load sheets in parallel using Rayon
+        let load_sheet = |(cache_key, path): (String, String)| -> Option<(String, SheetCache)> {
+            let bin = std::fs::read(path).ok()?;
+            let sheet_cache = bincode::deserialize::<SheetCache>(&bin).ok()?;
+            Some((cache_key, sheet_cache))
+        };
 
-        self.finalize_dictionary();
-        println!("Dictionary rebuild complete. Total JA keys: {}", self.ja_to_en.len());
-    }
+        let base_sheets: Vec<(String, SheetCache)> = base_info.into_par_iter()
+            .filter_map(load_sheet)
+            .collect();
+            
+        let table_sheets: Vec<(String, SheetCache)> = table_info.into_par_iter()
+            .filter_map(load_sheet)
+            .collect();
 
-    fn load_and_merge_sheet(&mut self, app: &AppHandle, cache_key: &str) {
-        if let Some(path) = crate::storage::get_sheet_cache_path(app, cache_key) {
-            if let Ok(bin) = std::fs::read(path) {
-                if let Ok(sheet_cache) = bincode::deserialize::<SheetCache>(&bin) {
-                    let mut ja_keys = Vec::new();
-                    let mut en_keys = Vec::new();
+        // 4. Merge into AppState serially (maintaining priority)
+        let mut merge_sheet = |cache_key: String, sheet_cache: SheetCache| {
+            let mut ja_keys = Vec::new();
+            let mut en_keys = Vec::new();
 
-                    for entry in sheet_cache.entries {
-                        // In case of conflict, we don't overwrite existing entries 
-                        // (priority is naturally given by the order in rebuild_dictionary: Base first)
-                        if !self.ja_to_en.contains_key(&entry.ja) {
-                            ja_keys.push(entry.ja.clone());
-                            self.ja_to_en.insert(entry.ja.clone(), entry.clone());
-                        }
-                        if !self.en_to_ja.contains_key(&entry.en_lower) {
-                            en_keys.push(entry.en_lower.clone());
-                            self.en_to_ja.insert(entry.en_lower.clone(), entry.clone());
-                        }
-                    }
-                    self.sheet_owned_ja_keys.insert(cache_key.to_string(), ja_keys);
-                    self.sheet_owned_en_keys.insert(cache_key.to_string(), en_keys);
+            for entry in sheet_cache.entries {
+                if !self.ja_to_en.contains_key(&entry.ja) {
+                    ja_keys.push(entry.ja.clone());
+                    self.ja_to_en.insert(entry.ja.clone(), entry.clone());
+                }
+                if !self.en_to_ja.contains_key(&entry.en_lower) {
+                    en_keys.push(entry.en_lower.clone());
+                    self.en_to_ja.insert(entry.en_lower.clone(), entry.clone());
                 }
             }
+            self.sheet_owned_ja_keys.insert(cache_key.clone(), ja_keys);
+            self.sheet_owned_en_keys.insert(cache_key, en_keys);
+        };
+
+        for (key, sheet) in base_sheets {
+            merge_sheet(key, sheet);
         }
+        for (key, sheet) in table_sheets {
+            merge_sheet(key, sheet);
+        }
+
+        self.finalize_dictionary();
+        let duration = start.elapsed();
+        println!("Dictionary rebuild complete in {:?}. Total JA keys: {}", duration, self.ja_to_en.len());
     }
 
-    pub fn add_sheet_incremental(&mut self, app: &AppHandle, cache_key: &str) {
-        self.load_and_merge_sheet(app, cache_key);
-        self.finalize_dictionary();
-    }
-
-    pub fn remove_sheet_incremental(&mut self, cache_key: &str) {
-        if let Some(ja_keys) = self.sheet_owned_ja_keys.remove(cache_key) {
-            for key in ja_keys {
-                self.ja_to_en.remove(&key);
-            }
-        }
-        if let Some(en_keys) = self.sheet_owned_en_keys.remove(cache_key) {
-            for key in en_keys {
-                self.en_to_ja.remove(&key);
-            }
-        }
-        self.finalize_dictionary();
-    }
 
     fn finalize_dictionary(&mut self) {
         let mut ja_keys: Vec<String> = self.ja_to_en.keys().cloned().collect();
@@ -208,6 +198,7 @@ impl AppState {
         self.ac_automaton_en = if patterns_en.is_empty() { None } else {
             aho_corasick::AhoCorasick::builder()
                 .match_kind(aho_corasick::MatchKind::LeftmostFirst)
+                .ascii_case_insensitive(true) // Enable case-insensitive matching for English
                 .build(&patterns_en)
                 .ok()
                 .map(Arc::new)

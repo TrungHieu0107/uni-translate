@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { ScanResult, FileInfo, useDictionary } from "./useDictionary";
 
 export function useTableSelection(files: FileInfo[]) {
@@ -10,7 +10,25 @@ export function useTableSelection(files: FileInfo[]) {
   } = useDictionary();
   
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
-  const [selectedSheets, setSelectedSheets] = useState<string[]>([]);
+  
+  const knownSheets = useMemo(() => {
+    if (!scanResult) return [];
+    const all: SheetMeta[] = [];
+    scanResult.files.forEach((f: any) => {
+      f.table_sheets.forEach((s: SheetMeta) => all.push(s));
+    });
+    return all;
+  }, [scanResult]);
+  const [autoSelectionCounts, setAutoSelectionCounts] = useState<Map<string, number>>(new Map());
+  const [manualSelectedSheets, setManualSelectedSheets] = useState<string[]>([]);
+
+  // Union of manual and auto-detected sheets
+  const selectedSheets = useMemo(() => {
+    const autoSheets = Array.from(autoSelectionCounts.keys());
+    const union = new Set([...manualSelectedSheets, ...autoSheets]);
+    return Array.from(union);
+  }, [manualSelectedSheets, autoSelectionCounts]);
+
   const [isCollapsed, setIsCollapsed] = useState(() => {
     return localStorage.getItem("table_selector_collapsed") === "true";
   });
@@ -21,13 +39,10 @@ export function useTableSelection(files: FileInfo[]) {
   }, [isCollapsed]);
 
   // Initial load: scan existing files and get active selection
-  // Only re-scan if the list of paths changes (upload/unload/manual reload)
   const pathsKey = files.map(f => `${f.path}:${f.enabled}`).sort().join(',');
   
   useEffect(() => {
     const init = async () => {
-      // We still use files.filter(f => f.enabled) to determine what to scan
-      // but the EFFECT only triggers when the global paths change
       const activeFiles = files.filter(f => f.enabled);
       if (activeFiles.length > 0) {
         try {
@@ -36,7 +51,8 @@ export function useTableSelection(files: FileInfo[]) {
           setScanResult(scan);
           
           const active = await getActiveSheets();
-          setSelectedSheets(active);
+          lastAppliedRef.current = [...active].sort().join('|');
+          setManualSelectedSheets(active);
         } catch (err) {
           console.error("Failed to initialize table selection", err);
         }
@@ -45,21 +61,59 @@ export function useTableSelection(files: FileInfo[]) {
       }
     };
     init();
-  }, [pathsKey]); // Only re-run when paths change
+  }, [pathsKey]);
 
   const toggleSheet = useCallback((cacheKey: string) => {
-    setSelectedSheets(prev => 
+    setManualSelectedSheets(prev => 
       prev.includes(cacheKey) ? prev.filter(k => k !== cacheKey) : [...prev, cacheKey]
     );
   }, []);
 
   const toggleAllVisible = useCallback((visibleKeys: string[], shouldSelect: boolean) => {
-    setSelectedSheets(prev => {
+    setManualSelectedSheets(prev => {
       const otherKeys = prev.filter(k => !visibleKeys.includes(k));
       return shouldSelect ? [...otherKeys, ...visibleKeys] : otherKeys;
     });
   }, []);
 
+  const addAutoSelection = useCallback(async (sheetNames: string[]) => {
+    const cacheKeys = sheetNames.map(name => {
+      const found = knownSheets.find(s => s.name === name);
+      return found?.cache_key;
+    }).filter(Boolean) as string[];
+
+    if (cacheKeys.length === 0) return;
+
+    setAutoSelectionCounts(prev => {
+      const next = new Map(prev);
+      cacheKeys.forEach(key => {
+        next.set(key, (next.get(key) || 0) + 1);
+      });
+      return next;
+    });
+  }, [knownSheets]);
+
+  const removeAutoSelection = useCallback(async (sheetNames: string[]) => {
+    const cacheKeys = sheetNames.map(name => {
+      const found = knownSheets.find(s => s.name === name);
+      return found?.cache_key;
+    }).filter(Boolean) as string[];
+
+    if (cacheKeys.length === 0) return;
+
+    setAutoSelectionCounts(prev => {
+      const next = new Map(prev);
+      cacheKeys.forEach(key => {
+        const count = next.get(key) || 0;
+        if (count <= 1) {
+          next.delete(key);
+        } else {
+          next.set(key, count - 1);
+        }
+      });
+      return next;
+    });
+  }, [knownSheets]);
   const applySelection = useCallback(async (currentSelection: string[]) => {
     try {
       setIsApplying(true);
@@ -71,16 +125,35 @@ export function useTableSelection(files: FileInfo[]) {
     }
   }, [updateTableSelection]);
 
+  const debounceRef = useRef<number | null>(null);
+  const pendingRef = useRef<string[]>([]);
+  const lastAppliedRef = useRef<string>("");
+
   // Auto-apply logic: whenever selectedSheets changes, trigger apply after a debounce
   useEffect(() => {
-    // Skip the very first run if selection is empty or already handled by init
-    if (selectedSheets.length === 0 && scanResult === null) return;
+    if (selectedSheets.length === 0 && scanResult === null) {
+      // If we cleared everything, we should still tell the backend
+      if (lastAppliedRef.current !== "") {
+        applySelection([]);
+        lastAppliedRef.current = "";
+      }
+      return;
+    }
     
-    const handler = setTimeout(() => {
-      applySelection(selectedSheets);
-    }, 600); // 600ms debounce
+    const currentKey = [...selectedSheets].sort().join('|');
+    if (currentKey === lastAppliedRef.current) return;
 
-    return () => clearTimeout(handler);
+    pendingRef.current = selectedSheets;
+    if (debounceRef.current) window.clearTimeout(debounceRef.current);
+
+    debounceRef.current = window.setTimeout(() => {
+      lastAppliedRef.current = currentKey;
+      applySelection(pendingRef.current);
+    }, 400); // Slightly faster debounce for auto-apply
+
+    return () => {
+      if (debounceRef.current) window.clearTimeout(debounceRef.current);
+    };
   }, [selectedSheets, applySelection, scanResult === null]);
 
   const refreshScan = useCallback(async () => {
@@ -92,7 +165,7 @@ export function useTableSelection(files: FileInfo[]) {
       setScanResult(scan);
       
       const active = await getActiveSheets();
-      setSelectedSheets(active);
+      setManualSelectedSheets(active);
     } catch (err) {
       console.error("Failed to refresh table selection", err);
     } finally {
@@ -108,8 +181,9 @@ export function useTableSelection(files: FileInfo[]) {
     isApplying: isApplying || isDictionaryLoading,
     toggleSheet,
     toggleAllVisible,
-    applySelection: () => applySelection(selectedSheets),
     refreshScan,
-    setSelectedSheets
+    addAutoSelection,
+    removeAutoSelection,
+    setManualSelectedSheets
   };
 }
