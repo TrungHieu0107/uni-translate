@@ -1,32 +1,23 @@
+const SQL_TABLE_PATTERNS = [
+  // Standard SQL clauses (supports schema.table and optional quotes)
+  /\b(?:FROM|JOIN|INTO|UPDATE|TABLE)\s+(?:["`\[])?([A-Z0-9_]+(?:\.[A-Z0-9_]+)?)(?:["`\]])?/gi,
+];
 
-function escapeRegExp(string) {
-  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const text = `
+	INSERT INTO
+		MYSCHEMA.WK_R_HANBAI_SYOHIN_RECENT
+`;
+
+for (const pattern of SQL_TABLE_PATTERNS) {
+    let match;
+    pattern.lastIndex = 0;
+    while ((match = pattern.exec(text)) !== null) {
+      console.log("Found match:", match[1]);
+    }
 }
 
-function testHighlight(text, keyword) {
-  if (!keyword || !text) return text;
-  
-  try {
-    const escapedKeyword = escapeRegExp(keyword);
-    console.log(`Testing with keyword: "${keyword}" (Escaped: "${escapedKeyword}")`);
-    const parts = text.split(new RegExp(`(${escapedKeyword})`, 'gi'));
-    console.log("Parts:", parts);
-    return parts;
-  } catch (e) {
-    console.error("Highlighting error:", e.message);
-    return text;
-  }
-}
-
-console.log("--- Test 1: keep[ ---");
-testHighlight("This is keep[ and keep it.", "keep[");
-
-console.log("\n--- Test 2: (normal) ---");
-testHighlight("Hello world", "hello");
-
-console.log("\n--- Test 3: keep[ (invalid without escape) ---");
-try {
-    new RegExp("(keep[)", "gi");
-} catch(e) {
-    console.log("Caught expected error without escape:", e.message);
-}
+const tokens = text
+    .split(/[\s,;()'"`\[\]{}=<>!]+/)
+    .map(t => t.trim().toUpperCase())
+    .filter(t => t.length >= 3);
+console.log("Tokens:", tokens);

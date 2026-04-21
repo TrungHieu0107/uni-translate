@@ -3,10 +3,27 @@ use serde::Serialize;
 use crate::parser::{normalize_ja, unescape};
 
 #[derive(Serialize)]
+pub struct SearchSnippet {
+    pub ja: String,
+    pub en: String,
+    pub source_sheet: String,
+    pub source_file: String,
+}
+
+#[derive(Serialize)]
 pub struct SearchResult {
-    pub exact: Vec<DictionaryEntry>,
-    pub prefix: Vec<DictionaryEntry>,
-    pub substring: Vec<DictionaryEntry>,
+    pub exact: Vec<SearchSnippet>,
+    pub prefix: Vec<SearchSnippet>,
+    pub substring: Vec<SearchSnippet>,
+}
+
+fn to_snippet(e: &DictionaryEntry) -> SearchSnippet {
+    SearchSnippet {
+        ja: e.ja.clone(),
+        en: e.en.clone(),
+        source_sheet: e.source_sheet.clone(),
+        source_file: e.source_file.clone(),
+    }
 }
 
 pub fn search(keyword: &str, state: &AppState) -> SearchResult {
@@ -90,7 +107,7 @@ pub fn search(keyword: &str, state: &AppState) -> SearchResult {
             if seen.contains(&entry.ja) {
                 continue;
             }
-            if entry.ja.contains(&kw_norm) || entry.en.to_lowercase().contains(&kw_lower) {
+            if entry.ja.contains(&kw_norm) || entry.en_lower.contains(&kw_lower) {
                 substring_matches.push(entry.clone());
                 seen.insert(entry.ja.clone());
             }
@@ -103,16 +120,10 @@ pub fn search(keyword: &str, state: &AppState) -> SearchResult {
 
     // Limit outputs
     let max_results = 200;
-    if prefix_matches.len() > max_results {
-        prefix_matches.truncate(max_results);
-    }
-    if substring_matches.len() > max_results {
-        substring_matches.truncate(max_results);
-    }
-
+    
     SearchResult {
-        exact: exact_matches,
-        prefix: prefix_matches,
-        substring: substring_matches,
+        exact: exact_matches.into_iter().take(max_results).map(|e| to_snippet(&e)).collect(),
+        prefix: prefix_matches.into_iter().take(max_results).map(|e| to_snippet(&e)).collect(),
+        substring: substring_matches.into_iter().take(max_results).map(|e| to_snippet(&e)).collect(),
     }
 }

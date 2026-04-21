@@ -3,6 +3,7 @@ mod parser;
 mod search;
 mod state;
 mod storage;
+mod events;
 
 use std::sync::Mutex;
 use state::{AppState, AppStateWrapper};
@@ -23,21 +24,25 @@ pub fn run() {
             let config = storage::load_config(&app_handle);
             let mut app_state = state.0.lock().unwrap();
             
+            app_state.active_table_sheets = config.active_table_sheets.into_iter().collect();
+
             for file_data in config.files {
-                if let Ok(_) = parser::parse_excel_file(&file_data.path, &mut app_state) {
-                    // Respect the saved enabled state
-                    if let Some(info) = app_state.loaded_files.get_mut(&file_data.path) {
-                        info.enabled = file_data.enabled;
-                    }
+                // Use the parallel parser (synchronously here in setup is fine)
+                if let Ok(mut file_info) = parser::parse_excel_file_parallel(&file_data.path, app_handle.clone()) {
+                    file_info.enabled = file_data.enabled;
+                    app_state.loaded_files.insert(file_data.path.clone(), file_info);
                 }
             }
             // re-index after loading all files
-            app_state.rebuild_index();
+            app_state.rebuild_dictionary(&app_handle);
             
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::scan_excel_sheets,
             commands::load_excel_files,
+            commands::update_table_selection,
+            commands::get_active_sheets,
             commands::reload_files,
             commands::search,
             commands::list_loaded_files,

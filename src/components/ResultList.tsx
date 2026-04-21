@@ -12,28 +12,7 @@ type RowType =
   | { type: 'header'; title: string; colorClass: string }
   | { type: 'entry'; entry: DictionaryEntry; isExact: boolean };
 
-function escapeRegExp(string: string) {
-  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function highlightMatch(text: string, keyword: string) {
-  if (!keyword || !text) return text;
-  
-  try {
-    const escapedKeyword = escapeRegExp(keyword);
-    const parts = text.split(new RegExp(`(${escapedKeyword})`, 'gi'));
-    return parts.map((part, i) => 
-      part.toLowerCase() === keyword.toLowerCase() ? (
-        <span key={i} className="bg-drac-text-accent/20 text-drac-text-accent px-[2px] rounded-sm">{part}</span>
-      ) : (
-        part
-      )
-    );
-  } catch (e) {
-    console.error("Highlighting error:", e);
-    return text;
-  }
-}
+import HighlightedText from "./HighlightedText";
 
 function ResultItem({ entry, keyword, isExact }: { entry: DictionaryEntry, keyword: string, isExact: boolean }) {
   const [copied, setCopied] = useState(false);
@@ -49,10 +28,10 @@ function ResultItem({ entry, keyword, isExact }: { entry: DictionaryEntry, keywo
   return (
     <div className={`grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto] items-center gap-6 px-4 py-3 rounded-md transition-colors hover:bg-drac-bg-tertiary ${isExact ? 'bg-drac-success-bg border-l-4 border-drac-success pl-[calc(1rem-4px)]' : 'bg-transparent'}`}>
       <div className="text-base font-medium text-drac-text-primary whitespace-nowrap overflow-hidden text-ellipsis" title={entry.ja}>
-        {highlightMatch(entry.ja, keyword)}
+        <HighlightedText text={entry.ja} query={keyword} />
       </div>
       <div className="text-[0.95rem] font-mono text-drac-text-secondary whitespace-nowrap overflow-hidden text-ellipsis" title={entry.en}>
-        {highlightMatch(entry.en, keyword)}
+        <HighlightedText text={entry.en} query={keyword} />
       </div>
       <div className="text-xs text-[#6272A4] bg-black/20 px-2 py-0.5 rounded-sm border border-drac-border whitespace-nowrap">
         {entry.source_file}

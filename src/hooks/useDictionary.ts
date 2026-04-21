@@ -2,18 +2,18 @@ import { useState, useCallback, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 
-export interface FileInfo {
+export interface SheetMeta {
   name: string;
-  path: string;
-  entries_count: number;
-  enabled: boolean;
+  kind: string;
+  entry_count: number;
+  cache_key: string;
 }
 
 export interface DictionaryEntry {
   ja: string;
   en: string;
   source_file: string;
-  source_path: string;
+  source_sheet: string;
 }
 
 export interface SearchResult {
@@ -22,14 +22,34 @@ export interface SearchResult {
   substring: DictionaryEntry[];
 }
 
+export interface FileInfo {
+  name: string;
+  path: string;
+  base_sheets: SheetMeta[];
+  table_sheets: SheetMeta[];
+  entries_count: number;
+  parse_duration_ms: number;
+  enabled: boolean;
+}
+
 export interface LoadResult {
   total_entries: number;
   files: FileInfo[];
 }
 
+export interface ScanResult {
+  files: FileInfo[];
+}
+
+export interface DictionaryStats {
+  total_entries: number;
+  active_sheets: number;
+}
+
 export function useDictionary() {
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [totalEntries, setTotalEntries] = useState(0);
+  const [activeSheetsCount, setActiveSheetsCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
 
   const fetchFiles = useCallback(async () => {
@@ -37,11 +57,11 @@ export function useDictionary() {
       const loadedFiles = await invoke<FileInfo[]>("list_loaded_files");
       setFiles(loadedFiles);
       
-      // Calculate total entries from enabled files only
-      const activeTotal = loadedFiles
-        .filter(f => f.enabled)
-        .reduce((acc, f) => acc + f.entries_count, 0);
-      setTotalEntries(activeTotal);
+      const stats = await invoke<DictionaryStats>("update_table_selection", { 
+        selectedCacheKeys: await invoke<string[]>("get_active_sheets") 
+      });
+      setTotalEntries(stats.total_entries);
+      setActiveSheetsCount(stats.active_sheets);
     } catch (err) {
       console.error("Failed to fetch files", err);
     }
@@ -50,6 +70,10 @@ export function useDictionary() {
   useEffect(() => {
     fetchFiles();
   }, [fetchFiles]);
+
+  const scanExcelSheets = useCallback(async (paths: string[]): Promise<ScanResult> => {
+    return await invoke<ScanResult>("scan_excel_sheets", { filePaths: paths });
+  }, []);
 
   const loadFiles = useCallback(async () => {
     try {
@@ -70,11 +94,14 @@ export function useDictionary() {
     }
   }, []);
 
-  const loadFilesByPath = useCallback(async (paths: string[]) => {
+  const loadFilesByPath = useCallback(async (paths: string[], selectedSheets: string[] = []) => {
     if (paths.length === 0) return;
     try {
       setIsLoading(true);
-      const res = await invoke<LoadResult>("load_excel_files", { filePaths: paths });
+      const res = await invoke<LoadResult>("load_excel_files", { 
+        filePaths: paths,
+        selectedTableSheets: selectedSheets
+      });
       setFiles(res.files);
       setTotalEntries(res.total_entries);
     } catch (err) {
@@ -83,6 +110,24 @@ export function useDictionary() {
     } finally {
       setIsLoading(false);
     }
+  }, []);
+
+  const updateTableSelection = useCallback(async (selectedCacheKeys: string[]) => {
+    try {
+      setIsLoading(true);
+      const res = await invoke<DictionaryStats>("update_table_selection", { selectedCacheKeys });
+      setTotalEntries(res.total_entries);
+      setActiveSheetsCount(res.active_sheets);
+      await fetchFiles(); // Refresh file counts
+    } catch (err) {
+      console.error("Failed to update selection", err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [fetchFiles]);
+
+  const getActiveSheets = useCallback(async (): Promise<string[]> => {
+    return await invoke<string[]>("get_active_sheets");
   }, []);
 
   const removeFile = useCallback(async (path: string) => {
@@ -127,6 +172,7 @@ export function useDictionary() {
       await invoke("reset_dictionary");
       setFiles([]);
       setTotalEntries(0);
+      setActiveSheetsCount(0);
     } catch (err) {
       console.error("Failed to reset dictionary", err);
     } finally {
@@ -178,6 +224,7 @@ export function useDictionary() {
   return {
     files,
     totalEntries,
+    activeSheetsCount,
     isLoading,
     loadFiles,
     loadFilesByPath,
@@ -188,5 +235,8 @@ export function useDictionary() {
     reloadFiles,
     reloadFile,
     search,
+    scanExcelSheets,
+    updateTableSelection,
+    getActiveSheets,
   };
 }

@@ -1,6 +1,9 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, forwardRef, useCallback } from "react";
 import { Copy, ArrowRightLeft, Languages, Check, Loader2, Plus, Trash2, GripHorizontal, RefreshCw } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
+import { SheetMeta, ScanResult } from "../hooks/useDictionary";
+import { useAutoTableDetect } from "../hooks/useAutoTableDetect";
+import { DetectionBanner } from "./DetectionBanner";
 
 interface TranslateSegment {
   text: string;
@@ -27,7 +30,324 @@ interface Session {
   isInputFocused: boolean;
 }
 
-export function BulkTranslator({ disabled }: { disabled: boolean }) {
+const SegmentedViewer = forwardRef<HTMLDivElement, { 
+  segments: TranslateSegment[], 
+  className?: string, 
+  placeholder?: string,
+  onManualClick?: () => void,
+  hoverMatchId: number | null,
+  setHoverMatchId: (id: number | null) => void,
+  onScroll?: (e: React.UIEvent<HTMLDivElement>) => void
+}>(({ segments, className, placeholder, onManualClick, hoverMatchId, setHoverMatchId, onScroll }, ref) => {
+  if (segments.length === 0 && placeholder) {
+    return (
+      <div className={`p-4 text-drac-text-secondary italic text-sm ${className}`} onClick={onManualClick}>
+        {placeholder}
+      </div>
+    );
+  }
+
+  return (
+    <div 
+      ref={ref}
+      className={`p-3 font-mono text-sm leading-relaxed whitespace-pre-wrap break-words overflow-y-auto scrollbar-dracula ${className}`}
+      onClick={onManualClick}
+      onScroll={onScroll}
+    >
+      {segments.map((seg, i) => (
+        <span
+          key={i}
+          className={`transition-all duration-150 rounded ${
+            seg.match_id !== null 
+              ? "text-drac-accent font-bold cursor-help" 
+              : ""
+          } ${
+            hoverMatchId !== null && seg.match_id === hoverMatchId 
+              ? "bg-drac-accent/30 text-drac-accent-hover ring-1 ring-drac-accent/50" 
+              : ""
+          }`}
+          onMouseEnter={() => {
+            if (seg.match_id !== null) setHoverMatchId(seg.match_id);
+          }}
+          onMouseLeave={() => {
+            if (seg.match_id !== null) setHoverMatchId(null);
+          }}
+        >
+          {seg.text}
+        </span>
+      ))}
+    </div>
+  );
+});
+
+SegmentedViewer.displayName = "SegmentedViewer";
+
+function SessionRow({ 
+  session, 
+  index, 
+  disabled, 
+  hoverMatchId, 
+  setHoverMatchId,
+  updateSession,
+  toggleDirection,
+  handleTranslate,
+  handleCopy,
+  removeSession,
+  startResize,
+  knownSheets,
+  activeSelection,
+  onSelectionAdd
+}: { 
+  session: Session, 
+  index: number, 
+  disabled: boolean,
+  hoverMatchId: number | null,
+  setHoverMatchId: (id: number | null) => void,
+  updateSession: (id: string, update: Partial<Session>) => void,
+  toggleDirection: (id: string) => void,
+  handleTranslate: (id: string) => void,
+  handleCopy: (id: string) => void,
+  removeSession: (id: string) => void,
+  startResize: (id: string, startHeight: number, clientY: number) => void,
+  knownSheets: SheetMeta[],
+  activeSelection: Set<string>,
+  onSelectionAdd: (sheetNames: string[]) => Promise<void>
+}) {
+  const inputRef = useRef<any>(null);
+  const outputRef = useRef<HTMLDivElement>(null);
+  const isSyncing = useRef(false);
+
+  const {
+    detectionResult,
+    pendingChecked,
+    handlePaste,
+    applyAndTranslate,
+    translateWithoutApplying,
+    dismissBanner,
+    togglePending,
+  } = useAutoTableDetect(
+    knownSheets,
+    activeSelection,
+    onSelectionAdd,
+    async () => handleTranslate(session.id)
+  );
+
+  // Auto-detect on input change with a small delay
+  useEffect(() => {
+    if (!session.input.trim()) {
+      dismissBanner();
+      return;
+    }
+    
+    const timer = setTimeout(() => {
+      handlePaste(session.input);
+    }, 800); // 800ms debounce
+    
+    return () => clearTimeout(timer);
+  }, [session.input, handlePaste, dismissBanner]);
+
+  const onPaste = (e: React.ClipboardEvent) => {
+    const text = e.clipboardData.getData('text');
+    if (text) {
+      handlePaste(text);
+    }
+  };
+
+  const handleScroll = (source: 'input' | 'output') => (e: any) => {
+    if (isSyncing.current) return;
+    
+    const target = source === 'input' ? outputRef.current : inputRef.current;
+    if (target) {
+      isSyncing.current = true;
+      target.scrollTop = e.target.scrollTop;
+      // Reset sync flag in the next frame to allow the target's scroll event to be ignored
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          isSyncing.current = false;
+        });
+      });
+    }
+  };
+
+  return (
+    <div className="flex flex-col bg-drac-bg-secondary rounded-xl border border-drac-border shadow-lg animate-slide-up relative group overflow-hidden">
+      
+      {/* Overlay Index */}
+      <div className="absolute top-4 left-4 z-10 flex items-center gap-2 pointer-events-none">
+        <span className="w-6 h-6 rounded-full bg-drac-bg-tertiary flex items-center justify-center text-[10px] font-bold text-drac-text-secondary border border-drac-border shadow-sm">
+          {index + 1}
+        </span>
+      </div>
+      
+      {/* High Density Editor Pane */}
+      <div className="flex flex-col border-t border-transparent">
+        <div 
+          className="flex gap-2 p-3 pl-12" // Padding left to clear the index circle
+          style={{ height: `${session.height}px` }}
+        >
+          {/* Input Box */}
+          <div className="flex-1 flex flex-col bg-drac-bg-primary rounded-lg border border-drac-border overflow-hidden shadow-inner focus-within:border-drac-accent/50 transition-colors">
+            <div className="bg-drac-bg-tertiary px-3 py-1.5 flex justify-between items-center border-b border-drac-border/50">
+              <button 
+                className="text-[10px] font-bold uppercase tracking-widest text-drac-accent hover:text-drac-accent-hover flex items-center gap-1 transition-colors"
+                onClick={() => toggleDirection(session.id)}
+                title="Click to toggle language"
+              >
+                {session.direction === "en_to_ja" ? "Source: English" : "Source: Japanese"}
+                <RefreshCw size={10} className="opacity-50" />
+              </button>
+              
+              <button 
+                className={`p-1 rounded hover:bg-drac-bg-secondary transition-colors ${session.isTranslating ? 'animate-spin text-drac-accent' : 'text-drac-success'}`}
+                onClick={() => handleTranslate(session.id)}
+                disabled={disabled || session.isTranslating || !session.input.trim()}
+                title="Force translate now"
+              >
+                {session.isTranslating ? <Loader2 size={12} /> : <Languages size={12} />}
+              </button>
+            </div>
+            {session.isInputFocused || !session.inputSegments.length || session.inputSegments.length <= 1 ? (
+              <textarea
+                ref={inputRef}
+                className="flex-1 w-full bg-transparent p-3 resize-none outline-none font-mono text-sm leading-relaxed scrollbar-dracula"
+                placeholder={session.direction === "en_to_ja" ? "Paste English text..." : "Paste Japanese text..."}
+                value={session.input}
+                onChange={(e) => updateSession(session.id, { input: e.target.value })}
+                onFocus={() => updateSession(session.id, { isInputFocused: true })}
+                onBlur={() => updateSession(session.id, { isInputFocused: false })}
+                onScroll={handleScroll('input')}
+                disabled={disabled}
+                spellCheck={false}
+                autoFocus={session.isInputFocused}
+                onPaste={onPaste}
+              />
+            ) : (
+              <SegmentedViewer 
+                ref={inputRef}
+                segments={session.inputSegments} 
+                className="flex-1 cursor-text"
+                onManualClick={() => updateSession(session.id, { isInputFocused: true })}
+                hoverMatchId={hoverMatchId}
+                setHoverMatchId={setHoverMatchId}
+                onScroll={handleScroll('input')}
+              />
+            )}
+          </div>
+
+          {/* Middle Controls */}
+          <div className="flex flex-col items-center justify-center gap-2 text-drac-border/50 w-8">
+            <button 
+              className="p-1.5 rounded-full hover:bg-drac-bg-tertiary text-drac-text-secondary hover:text-drac-accent transition-all active:rotate-180"
+              onClick={() => toggleDirection(session.id)}
+              title="Swap Languages"
+            >
+              <ArrowRightLeft size={16} />
+            </button>
+          </div>
+
+          {/* Output Box */}
+          <div className="flex-1 flex flex-col bg-drac-bg-primary rounded-lg border border-drac-border overflow-hidden shadow-inner relative">
+            <div className="bg-drac-bg-tertiary px-3 py-1.5 flex justify-between items-center border-b border-drac-border/50">
+              <button 
+                className="text-[10px] font-bold uppercase tracking-widest text-drac-text-secondary hover:text-drac-text-primary flex items-center gap-1 transition-colors"
+                onClick={() => toggleDirection(session.id)}
+                title="Click to toggle language"
+              >
+                {session.direction === "en_to_ja" ? "Target: Japanese" : "Target: English"}
+                <RefreshCw size={10} className="opacity-50" />
+              </button>
+            </div>
+            <SegmentedViewer 
+              ref={outputRef}
+              segments={session.outputSegments}
+              className="flex-1"
+              placeholder="Translation will appear here..."
+              hoverMatchId={hoverMatchId}
+              setHoverMatchId={setHoverMatchId}
+              onScroll={handleScroll('output')}
+            />
+          </div>
+        </div>
+
+        {/* Detection Banner */}
+        {detectionResult && (
+          <DetectionBanner 
+            result={detectionResult}
+            pendingChecked={pendingChecked}
+            onToggle={togglePending}
+            onApplyAndTranslate={applyAndTranslate}
+            onTranslateOnly={translateWithoutApplying}
+            onDismiss={dismissBanner}
+          />
+        )}
+
+        {/* Footer Action Bar */}
+        <div className="flex items-center justify-between px-3 py-2 bg-drac-bg-tertiary/30 border-t border-drac-border/50">
+          <div className="text-[10px] text-drac-text-secondary font-medium">
+            {session.input.length > 0 && `${session.input.length} characters`}
+          </div>
+          
+          <div className="flex items-center gap-2">
+            {session.output && (
+              <button
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all active:scale-95 ${
+                  session.copied 
+                    ? "bg-drac-success/20 text-drac-success border border-drac-success/30" 
+                    : "bg-drac-bg-primary text-drac-text-primary border border-drac-border hover:border-drac-accent hover:text-drac-accent shadow-sm"
+                }`}
+                onClick={() => handleCopy(session.id)}
+              >
+                {session.copied ? <Check size={14} /> : <Copy size={14} />}
+                {session.copied ? "COPIED" : "COPY RESULT"}
+              </button>
+            )}
+            
+            <button
+              className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold bg-drac-bg-primary text-drac-text-secondary border border-drac-border hover:border-drac-danger hover:text-drac-danger hover:bg-drac-danger-bg transition-all active:scale-95 shadow-sm"
+              onClick={() => removeSession(session.id)}
+              title="Remove Section"
+            >
+              <Trash2 size={14} />
+              REMOVE
+            </button>
+          </div>
+        </div>
+
+        {/* Resize Handle at the very bottom */}
+        <div 
+          className="h-1 bg-drac-bg-tertiary hover:bg-drac-accent/50 cursor-ns-resize flex items-center justify-center transition-colors group/handle active:bg-drac-accent"
+          onMouseDown={(e) => startResize(session.id, session.height, e.clientY)}
+          title="Drag to resize height"
+        >
+          <GripHorizontal size={12} className="text-drac-border opacity-0 group-hover/handle:opacity-100 transition-opacity" />
+        </div>
+
+        {/* Translation Overlay */}
+        {session.isTranslating && (
+          <div className="absolute inset-0 bg-drac-bg-secondary/40 backdrop-blur-[1px] z-[60] flex items-center justify-center animate-fade-in pointer-events-none">
+            <div className="flex flex-col items-center gap-2">
+              <Loader2 className="text-drac-accent animate-spin" size={24} />
+              <span className="text-[10px] font-bold text-drac-accent tracking-widest animate-pulse">TRANSLATING...</span>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+export function BulkTranslator({ 
+  disabled,
+  scanResult,
+  selectedSheets,
+  onToggleSheet
+}: { 
+  disabled: boolean,
+  scanResult: ScanResult | null,
+  selectedSheets: string[],
+  onToggleSheet: (cacheKey: string) => void
+}) {
   const [sessions, setSessions] = useState<Session[]>(() => {
     try {
       const saved = localStorage.getItem("bulk_translator_sessions");
@@ -145,6 +465,29 @@ export function BulkTranslator({ disabled }: { disabled: boolean }) {
     }
   };
 
+  const knownSheets = useMemo(() => {
+    if (!scanResult) return [];
+    const all: SheetMeta[] = [];
+    scanResult.files.forEach((f: any) => {
+      // Collect table sheets for detection matching
+      f.table_sheets.forEach((s: SheetMeta) => all.push(s));
+    });
+    return all;
+  }, [scanResult]);
+
+  const activeSelectionSet = useMemo(() => new Set(selectedSheets), [selectedSheets]);
+
+  const onSelectionAdd = useCallback(async (sheetNames: string[]) => {
+    // sheetNames are from detectionResult (table names)
+    // We need to find the cache_key for each sheetName
+    const toAdd = knownSheets.filter(s => sheetNames.includes(s.name));
+    for (const sheet of toAdd) {
+      if (!activeSelectionSet.has(sheet.cache_key)) {
+        await onToggleSheet(sheet.cache_key);
+      }
+    }
+  }, [knownSheets, activeSelectionSet, onToggleSheet]);
+
   const handleCopy = (id: string) => {
     const session = sessions.find((s) => s.id === id);
     if (!session || !session.output) return;
@@ -214,192 +557,29 @@ export function BulkTranslator({ disabled }: { disabled: boolean }) {
     };
   }, [sessions.map(s => s.input).join('|'), sessions.map(s => s.direction).join('|')]);
 
-  const SegmentedViewer = ({ 
-    segments, 
-    className, 
-    placeholder,
-    onManualClick
-  }: { 
-    segments: TranslateSegment[], 
-    className?: string, 
-    placeholder?: string,
-    onManualClick?: () => void
-  }) => {
-    if (segments.length === 0 && placeholder) {
-      return (
-        <div className={`p-4 text-drac-text-secondary italic text-sm ${className}`} onClick={onManualClick}>
-          {placeholder}
-        </div>
-      );
-    }
-
-    return (
-      <div 
-        className={`p-3 font-mono text-sm leading-relaxed whitespace-pre-wrap break-words overflow-y-auto scrollbar-dracula ${className}`}
-        onClick={onManualClick}
-      >
-        {segments.map((seg, i) => (
-          <span
-            key={i}
-            className={`transition-all duration-150 rounded ${
-              seg.match_id !== null 
-                ? "text-drac-accent font-bold cursor-help" 
-                : ""
-            } ${
-              hoverMatchId !== null && seg.match_id === hoverMatchId 
-                ? "bg-drac-accent/30 text-drac-accent-hover ring-1 ring-drac-accent/50" 
-                : ""
-            }`}
-            onMouseEnter={() => {
-              if (seg.match_id !== null) setHoverMatchId(seg.match_id);
-            }}
-            onMouseLeave={() => {
-              if (seg.match_id !== null) setHoverMatchId(null);
-            }}
-          >
-            {seg.text}
-          </span>
-        ))}
-      </div>
-    );
-  };
-
   return (
     <div className="flex flex-col h-full w-full bg-drac-bg-primary text-drac-text-primary overflow-hidden">
       <div className="flex-1 overflow-y-auto scrollbar-dracula p-6 relative">
         <div className="flex flex-col gap-6 pb-32 w-full pt-4">
 
           {sessions.map((session, index) => (
-            <div key={session.id} className="flex flex-col bg-drac-bg-secondary rounded-xl border border-drac-border shadow-lg animate-slide-up relative group overflow-hidden">
-              
-              {/* Overlay Index */}
-              <div className="absolute top-4 left-4 z-10 flex items-center gap-2 pointer-events-none">
-                <span className="w-6 h-6 rounded-full bg-drac-bg-tertiary flex items-center justify-center text-[10px] font-bold text-drac-text-secondary border border-drac-border shadow-sm">
-                  {index + 1}
-                </span>
-              </div>
-              
-              {/* High Density Editor Pane */}
-              <div className="flex flex-col border-t border-transparent">
-                <div 
-                  className="flex gap-2 p-3 pl-12" // Padding left to clear the index circle
-                  style={{ height: `${session.height}px` }}
-                >
-                  {/* Input Box */}
-                  <div className="flex-1 flex flex-col bg-drac-bg-primary rounded-lg border border-drac-border overflow-hidden shadow-inner focus-within:border-drac-accent/50 transition-colors">
-                    <div className="bg-drac-bg-tertiary px-3 py-1.5 flex justify-between items-center border-b border-drac-border/50">
-                      <button 
-                        className="text-[10px] font-bold uppercase tracking-widest text-drac-accent hover:text-drac-accent-hover flex items-center gap-1 transition-colors"
-                        onClick={() => toggleDirection(session.id)}
-                        title="Click to toggle language"
-                      >
-                        {session.direction === "en_to_ja" ? "Source: English" : "Source: Japanese"}
-                        <RefreshCw size={10} className="opacity-50" />
-                      </button>
-                      
-                      <button 
-                        className={`p-1 rounded hover:bg-drac-bg-secondary transition-colors ${session.isTranslating ? 'animate-spin text-drac-accent' : 'text-drac-success'}`}
-                        onClick={() => handleTranslate(session.id)}
-                        disabled={disabled || session.isTranslating || !session.input.trim()}
-                        title="Force translate now"
-                      >
-                        {session.isTranslating ? <Loader2 size={12} /> : <Languages size={12} />}
-                      </button>
-                    </div>
-                    {session.isInputFocused || !session.inputSegments.length || session.inputSegments.length <= 1 ? (
-                      <textarea
-                        className="flex-1 w-full bg-transparent p-3 resize-none outline-none font-mono text-sm leading-relaxed scrollbar-dracula"
-                        placeholder={session.direction === "en_to_ja" ? "Paste English text..." : "Paste Japanese text..."}
-                        value={session.input}
-                        onChange={(e) => updateSession(session.id, { input: e.target.value })}
-                        onFocus={() => updateSession(session.id, { isInputFocused: true })}
-                        onBlur={() => updateSession(session.id, { isInputFocused: false })}
-                        disabled={disabled}
-                        spellCheck={false}
-                        autoFocus={session.isInputFocused}
-                      />
-                    ) : (
-                      <SegmentedViewer 
-                        segments={session.inputSegments} 
-                        className="flex-1 cursor-text"
-                        onManualClick={() => updateSession(session.id, { isInputFocused: true })}
-                      />
-                    )}
-                  </div>
-
-                  {/* Middle Controls */}
-                  <div className="flex flex-col items-center justify-center gap-2 text-drac-border/50 w-8">
-                    <button 
-                      className="p-1.5 rounded-full hover:bg-drac-bg-tertiary text-drac-text-secondary hover:text-drac-accent transition-all active:rotate-180"
-                      onClick={() => toggleDirection(session.id)}
-                      title="Swap Languages"
-                    >
-                      <ArrowRightLeft size={16} />
-                    </button>
-                  </div>
-
-                  {/* Output Box */}
-                  <div className="flex-1 flex flex-col bg-drac-bg-primary rounded-lg border border-drac-border overflow-hidden shadow-inner relative">
-                    <div className="bg-drac-bg-tertiary px-3 py-1.5 flex justify-between items-center border-b border-drac-border/50">
-                      <button 
-                        className="text-[10px] font-bold uppercase tracking-widest text-drac-text-secondary hover:text-drac-text-primary flex items-center gap-1 transition-colors"
-                        onClick={() => toggleDirection(session.id)}
-                        title="Click to toggle language"
-                      >
-                        {session.direction === "en_to_ja" ? "Target: Japanese" : "Target: English"}
-                        <RefreshCw size={10} className="opacity-50" />
-                      </button>
-                    </div>
-                    <SegmentedViewer 
-                      segments={session.outputSegments}
-                      className="flex-1"
-                      placeholder="Translation will appear here..."
-                    />
-                  </div>
-                </div>
-
-                {/* Footer Action Bar */}
-                <div className="flex items-center justify-between px-3 py-2 bg-drac-bg-tertiary/30 border-t border-drac-border/50">
-                  <div className="text-[10px] text-drac-text-secondary font-medium">
-                    {session.input.length > 0 && `${session.input.length} characters`}
-                  </div>
-                  
-                  <div className="flex items-center gap-2">
-                    {session.output && (
-                      <button
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all active:scale-95 ${
-                          session.copied 
-                            ? "bg-drac-success/20 text-drac-success border border-drac-success/30" 
-                            : "bg-drac-bg-primary text-drac-text-primary border border-drac-border hover:border-drac-accent hover:text-drac-accent shadow-sm"
-                        }`}
-                        onClick={() => handleCopy(session.id)}
-                      >
-                        {session.copied ? <Check size={14} /> : <Copy size={14} />}
-                        {session.copied ? "COPIED" : "COPY RESULT"}
-                      </button>
-                    )}
-                    
-                    <button
-                      className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold bg-drac-bg-primary text-drac-text-secondary border border-drac-border hover:border-drac-danger hover:text-drac-danger hover:bg-drac-danger-bg transition-all active:scale-95 shadow-sm"
-                      onClick={() => removeSession(session.id)}
-                      title="Remove Section"
-                    >
-                      <Trash2 size={14} />
-                      REMOVE
-                    </button>
-                  </div>
-                </div>
-
-                {/* Resize Handle at the very bottom */}
-                <div 
-                  className="h-1 bg-drac-bg-tertiary hover:bg-drac-accent/50 cursor-ns-resize flex items-center justify-center transition-colors group/handle active:bg-drac-accent"
-                  onMouseDown={(e) => startResize(session.id, session.height, e.clientY)}
-                  title="Drag to resize height"
-                >
-                  <GripHorizontal size={12} className="text-drac-border opacity-0 group-hover/handle:opacity-100 transition-opacity" />
-                </div>
-              </div>
-            </div>
+            <SessionRow 
+              key={session.id}
+              session={session}
+              index={index}
+              disabled={disabled}
+              hoverMatchId={hoverMatchId}
+              setHoverMatchId={setHoverMatchId}
+              updateSession={updateSession}
+              toggleDirection={toggleDirection}
+              handleTranslate={handleTranslate}
+              handleCopy={handleCopy}
+              removeSession={removeSession}
+              startResize={startResize}
+              knownSheets={knownSheets}
+              activeSelection={activeSelectionSet}
+              onSelectionAdd={onSelectionAdd}
+            />
           ))}
 
           {/* Large Add Button at bottom */}

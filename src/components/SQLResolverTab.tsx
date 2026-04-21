@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Send, Copy, Check, Trash2, Split, TableProperties, AlertCircle, Sparkles, Database } from "lucide-react";
+import { Send, Copy, Check, Trash2, Split, TableProperties, AlertCircle, Sparkles, Database, Loader2 } from "lucide-react";
 import { resolveAliasesFromSQL, ResolveResult } from "../lib/sqlAliasResolver";
 import { AliasBadgeList } from "./AliasBadgeList";
 import { DiffView } from "./DiffView";
@@ -21,18 +21,27 @@ const [result, setResult] = useState<ResolveResult | null>(null);
     localStorage.setItem("resolver_tableMappings", JSON.stringify(tableMappings));
   }, [inputSql, tableMappings]);
 
+  const [isResolving, setIsResolving] = useState(false);
+  
   // Debounced resolution
   useEffect(() => {
+    setIsResolving(true);
     const timer = setTimeout(() => {
-      if (inputSql.trim()) {
-        const res = resolveAliasesFromSQL(inputSql, tableMappings);
-        setResult(res);
-      } else {
-        setResult(null);
+      try {
+        if (inputSql.trim()) {
+          const res = resolveAliasesFromSQL(inputSql, tableMappings);
+          setResult(res);
+        } else {
+          setResult(null);
+        }
+      } finally {
+        setIsResolving(false);
       }
-    }, 300);
+    }, 400);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+    };
   }, [inputSql, tableMappings]);
 
   const handleCopy = () => {
@@ -185,7 +194,15 @@ const [result, setResult] = useState<ResolveResult | null>(null);
               </button>
             </div>
 
-            <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden relative">
+              {isResolving && (
+                <div className="absolute inset-0 bg-drac-bg-primary/50 backdrop-blur-[1px] z-10 flex items-center justify-center animate-fade-in">
+                  <div className="flex flex-col items-center gap-2">
+                    <Loader2 className="text-drac-accent animate-spin" size={24} />
+                    <span className="text-[10px] font-bold text-drac-accent tracking-widest animate-pulse">RESOLVING...</span>
+                  </div>
+                </div>
+              )}
               {!result && !inputSql.trim() ? (
                 <div className="flex-1 flex flex-col items-center justify-center text-drac-text-secondary opacity-30 italic p-6 text-center">
                   <TableProperties size={48} className="mb-4" />

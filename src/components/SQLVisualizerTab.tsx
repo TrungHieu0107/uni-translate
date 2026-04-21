@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Copy, Check, Trash2, Send, FileText, Code } from "lucide-react";
+import { Copy, Check, Trash2, Send, FileText, Code, Loader2 } from "lucide-react";
 import { parseToIR, renderIR, IRNode } from "../lib/sqlConditionVisualizer";
 import { SnippetFile, SnippetMatcher } from "../lib/snippetMatcher";
 import { VisualizerOutput } from "./VisualizerOutput";
@@ -32,25 +32,37 @@ export function SQLVisualizerTab() {
     if (snippetFileName) localStorage.setItem("visualizer_snippetFileName", snippetFileName);
   }, [snippetFile, snippetFileName]);
 
-  // Debounced parsing and rendering
-  const { outputText, currentUnmatched } = useMemo(() => {
-    if (!inputCode.trim()) return { outputText: "", currentUnmatched: [] };
-    
-    try {
-      const irNodes = parseToIR(inputCode);
-      setNodes(irNodes); // Side effect in useMemo isn't ideal but works for this simple state
-      const renderRes = renderIR(irNodes, { matcher });
-      return { outputText: renderRes.output, currentUnmatched: renderRes.unmatched };
-    } catch (e) {
-      console.error("Parse error", e);
-      return { outputText: "", currentUnmatched: [] };
-    }
-  }, [inputCode, matcher]);
+  const [isVisualizing, setIsVisualizing] = useState(false);
+  const [outputText, setOutputText] = useState("");
 
-  // Update unmatched state when rendering changes
+  // Debounced parsing and rendering
   useEffect(() => {
-    setUnmatched(currentUnmatched);
-  }, [currentUnmatched]);
+    if (!inputCode.trim()) {
+      setOutputText("");
+      setUnmatched([]);
+      setIsVisualizing(false);
+      return;
+    }
+
+    setIsVisualizing(true);
+    const timer = setTimeout(() => {
+      try {
+        const irNodes = parseToIR(inputCode);
+        setNodes(irNodes);
+        const renderRes = renderIR(irNodes, { matcher });
+        setOutputText(renderRes.output);
+        setUnmatched(renderRes.unmatched);
+      } catch (e) {
+        console.error("Parse error", e);
+        setOutputText("");
+        setUnmatched([]);
+      } finally {
+        setIsVisualizing(false);
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [inputCode, matcher]);
 
   const groupIds = useMemo(() => {
     const ids = new Set<string>();
@@ -187,7 +199,15 @@ export function SQLVisualizerTab() {
               </div>
             </div>
 
-            <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden relative">
+              {isVisualizing && (
+                <div className="absolute inset-0 bg-drac-bg-primary/50 backdrop-blur-[1px] z-10 flex items-center justify-center animate-fade-in">
+                  <div className="flex flex-col items-center gap-2">
+                    <Loader2 className="text-amber-400 animate-spin" size={24} />
+                    <span className="text-[10px] font-bold text-amber-400 tracking-widest animate-pulse">VISUALIZING...</span>
+                  </div>
+                </div>
+              )}
               {!outputText && !inputCode.trim() ? (
                 <div className="flex-1 flex flex-col items-center justify-center text-drac-text-secondary opacity-30 italic p-6 text-center">
                   <FileText size={48} className="mb-4" />
