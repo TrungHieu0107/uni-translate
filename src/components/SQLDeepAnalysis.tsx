@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Shield, Brain, Activity, List, MessageSquare, AlertTriangle, Table as TableIcon, Layers } from "lucide-react";
+import { Brain, Activity, List, MessageSquare, Table as TableIcon, Layers } from "lucide-react";
 
 export interface CteInfo {
   name: string;
