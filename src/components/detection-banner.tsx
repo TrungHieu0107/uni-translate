@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, CheckCircle, AlertCircle, X, CheckSquare, ChevronDown, ChevronUp } from 'lucide-react';
+import { Search, CheckCircle, AlertCircle, X, CheckSquare, ChevronDown, ChevronUp, Database } from 'lucide-react';
 import { DetectionResult, DetectionMethod } from '../lib/table-name-detector';
 
 interface DetectionBannerProps {
@@ -30,10 +30,11 @@ export const DetectionBanner: React.FC<DetectionBannerProps> = ({
     if (isApplied) setIsMainCollapsed(true);
   }, [isApplied]);
 
-  const newTables = result.matched.filter(t => !t.alreadySelected);
-  const alreadySelected = result.matched.filter(t => t.alreadySelected);
+  // If isApplied is true, we want to show all matched tables as "Applied"
+  const matchedTables = result.matched;
+  const unmatchedTables = result.unmatched;
   
-  if (newTables.length === 0 && result.unmatched.length === 0 && alreadySelected.length === 0) return null;
+  if (matchedTables.length === 0 && unmatchedTables.length === 0) return null;
 
   return (
     <div className={`mx-4 my-2 p-4 border rounded-lg shadow-xl animate-slide-up backdrop-blur-md transition-all duration-300 ${
@@ -53,9 +54,11 @@ export const DetectionBanner: React.FC<DetectionBannerProps> = ({
             {isApplied ? "Applied table selection" : "Tables detected in your text"}
           </span>
           {isMainCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
-          {isMainCollapsed && !isApplied && (
-            <span className="text-[10px] bg-drac-accent/20 px-2 py-0.5 rounded-full ml-2">
-              {newTables.length + alreadySelected.length} found
+          {isMainCollapsed && (
+            <span className={`text-[10px] px-2 py-0.5 rounded-full ml-2 ${
+              isApplied ? "bg-drac-success/20" : "bg-drac-accent/20"
+            }`}>
+              {matchedTables.length} tables
             </span>
           )}
         </div>
@@ -66,52 +69,58 @@ export const DetectionBanner: React.FC<DetectionBannerProps> = ({
 
       {!isMainCollapsed && (
         <div className="space-y-4 mt-4 animate-fade-in">
-        {/* NEW TABLES */}
-        {newTables.length > 0 && (
-          <div className="space-y-2">
-            <div className="text-[10px] font-bold text-drac-success uppercase tracking-widest flex items-center gap-2">
-              <span className="w-1.5 h-1.5 bg-drac-success rounded-full" />
-              Automatically loaded from your text
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {newTables.map((t) => (
-                <div 
-                  key={t.tableName}
-                  className="flex items-center gap-3 p-2 rounded-md border bg-drac-success/5 border-drac-success/20 group"
-                >
-                  <div className="text-drac-success">
-                    <CheckSquare size={16} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-drac-text-primary truncate">{t.tableName}</span>
-                      <MethodBadge method={result.detectionMethod[t.tableName]} />
+          {/* MATCHED TABLES */}
+          {matchedTables.length > 0 && (
+            <div className="space-y-2">
+              <div className={`text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 ${
+                isApplied ? "text-drac-success" : "text-drac-accent"
+              }`}>
+                <Database size={12} />
+                {isApplied ? "Active tables for this section" : "Automatically detected tables"}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                {matchedTables.map((t) => (
+                  <div 
+                    key={t.tableName}
+                    className={`flex items-center gap-3 p-2 rounded-md border transition-colors ${
+                      isApplied 
+                        ? "bg-drac-success/5 border-drac-success/20 hover:border-drac-success/40" 
+                        : "bg-drac-bg-primary/50 border-drac-border hover:border-drac-accent/50"
+                    }`}
+                  >
+                    <div className={isApplied ? "text-drac-success" : "text-drac-accent"}>
+                      <CheckSquare size={16} />
                     </div>
-                    <div className="text-[10px] text-drac-text-secondary opacity-60">
-                      {t.entryCount} entries
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-drac-text-primary truncate">{t.tableName}</span>
+                        {!isApplied && <MethodBadge method={result.detectionMethod[t.tableName]} />}
+                      </div>
+                      <div className="text-[10px] text-drac-text-secondary opacity-60">
+                        {t.entryCount.toLocaleString()} entries
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* UNMATCHED TABLES */}
-        {result.unmatched.length > 0 && (
-          <div className="p-3 bg-drac-warning/10 border border-drac-warning/20 rounded-md space-y-1.5">
-            <div className="text-[10px] font-bold text-drac-warning uppercase tracking-widest flex items-center gap-2">
-              <AlertCircle size={12} />
-              Not found in loaded sheets
+          {/* UNMATCHED TABLES */}
+          {unmatchedTables.length > 0 && (
+            <div className="p-3 bg-drac-warning/10 border border-drac-warning/20 rounded-md space-y-1.5">
+              <div className="text-[10px] font-bold text-drac-warning uppercase tracking-widest flex items-center gap-2">
+                <AlertCircle size={12} />
+                Not found in loaded sheets
+              </div>
+              <div className="text-xs text-drac-warning/80 flex flex-wrap gap-x-2">
+                {unmatchedTables.map((name, i) => (
+                  <span key={name} className="font-mono">{name}{i < unmatchedTables.length - 1 ? "," : ""}</span>
+                ))}
+              </div>
             </div>
-            <div className="text-xs text-drac-warning/80 flex flex-wrap gap-x-2">
-              {result.unmatched.map((name, i) => (
-                <span key={name}>{name}{i < result.unmatched.length - 1 ? "," : ""}</span>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
       )}
     </div>
   );

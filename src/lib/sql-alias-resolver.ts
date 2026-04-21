@@ -21,12 +21,13 @@ export interface Token {
   value: string;
   originalValue?: string; // used for diffing
   isResolved?: boolean;
+  isAliasDefinition?: boolean;
 }
 
 export type AliasTarget =
-  | { kind: "table";    name: string; originalAlias?: string }        // real table → expand
-  | { kind: "subquery"; sql: string }                                 // (SELECT ...) → keep as-is
-  | { kind: "cte";      name: string }                                // WITH x AS (...) → keep as-is
+  | { kind: "table";    name: string; originalAlias?: string }        // real table ↁEexpand
+  | { kind: "subquery"; sql: string }                                 // (SELECT ...) ↁEkeep as-is
+  | { kind: "cte";      name: string }                                // WITH x AS (...) ↁEkeep as-is
 
 export interface ResolveResult {
   resolvedSQL: string;
@@ -245,7 +246,10 @@ function parseFromAndJoin(tokens: Token[], aliasMap: Map<string, AliasTarget>, t
           }
           
           if (tokens[j].kind === "identifier") {
-             if (!alias) alias = tokens[j].value.replace(/["`\[\]]/g, "");
+             if (!alias) {
+               alias = tokens[j].value.replace(/["`\[\]]/g, "");
+               tokens[j].isAliasDefinition = true;
+             }
           }
           j++;
         }
@@ -300,18 +304,16 @@ export function resolveAliasesFromSQL(
     
     if (token.kind === "subquery") {
        const innerSQL = token.value.substring(1, token.value.length - 1);
-       if (innerSQL.toUpperCase().includes("SELECT")) {
-          const subResult = resolveAliasesFromSQL(innerSQL, tableMappings, aliasMap);
-          resultTokens.push({
-            ...token,
-            value: `(${subResult.resolvedSQL})`,
-            originalValue: token.value,
-            isResolved: subResult.changeCount > 0
-          });
-          changeCount += subResult.changeCount;
-          subResult.unknownAliases.forEach(a => unknownAliasesSet.add(a));
-          continue;
-       }
+       const subResult = resolveAliasesFromSQL(innerSQL, tableMappings, aliasMap);
+       resultTokens.push({
+         ...token,
+         value: `(${subResult.resolvedSQL})`,
+         originalValue: token.value,
+         isResolved: subResult.changeCount > 0
+       });
+       changeCount += subResult.changeCount;
+       subResult.unknownAliases.forEach(a => unknownAliasesSet.add(a));
+       continue;
     }
 
     let resolvedDefinition = false;
@@ -323,16 +325,17 @@ export function resolveAliasesFromSQL(
           const possibleAlias = tokens[afterNameIndex].value.replace(/["`\[\]]/g, "").toUpperCase();
           const target = aliasMap.get(possibleAlias);
           if (target && target.kind === "table") {
-             const normalizedAlias = target.originalAlias || tokens[afterNameIndex].value.replace(/["`\[\]]/g, "");
-             resultTokens.push({
-               ...token,
-               value: `${target.name}[${normalizedAlias}]`,
-               originalValue: fullName,
-               isResolved: true
-             });
-             changeCount++;
-             i = nextIndex - 1; 
-             resolvedDefinition = true;
+            const newValue = target.name;
+            const hasChanged = newValue !== fullName;
+            resultTokens.push({
+              ...token,
+              value: newValue,
+              originalValue: fullName,
+              isResolved: hasChanged
+            });
+            if (hasChanged) changeCount++;
+            i = nextIndex - 1;
+            resolvedDefinition = true;
           }
        }
     }
@@ -341,17 +344,22 @@ export function resolveAliasesFromSQL(
 
     // Handle column references: alias.column
     if (token.kind === "identifier" && i + 2 < tokens.length && tokens[i+1].kind === "dot" && tokens[i+2].kind === "identifier") {
-      const alias = token.value.replace(/["`\[\]]/g, "").toUpperCase();
-      const target = aliasMap.get(alias);
+      const alias = token.value.replace(/["`\[\]]/g, "");
+      const target = aliasMap.get(alias.toUpperCase());
 
-      if (target && target.kind === "table") {
+      if (target && (target.kind === "table" || target.kind === "cte")) {
+          const targetName = target.name;
+          const newValue = `${targetName}[${alias}]`;
+          const hasChanged = newValue !== token.value;
+
           resultTokens.push({
             ...token,
-            value: `${target.name}[${target.originalAlias || token.value}]`,
+            value: newValue,
             originalValue: token.value,
-            isResolved: true
+            isResolved: hasChanged
           });
-          changeCount++;
+          
+          if (hasChanged) changeCount++;
           resultTokens.push(tokens[i+1], tokens[i+2]);
           i += 2; 
           continue;
@@ -359,26 +367,32 @@ export function resolveAliasesFromSQL(
           resultTokens.push(token, tokens[i+1], tokens[i+2]);
           i += 2; continue;
       } else {
-        if (!KEYWORDS.has(alias)) unknownAliasesSet.add(token.value);
+        if (!KEYWORDS.has(alias.toUpperCase())) unknownAliasesSet.add(token.value);
       }
     }
     
     // Handle standalone aliases or keywords
     if (token.kind === "identifier") {
-       const upper = token.value.replace(/["`\[\]]/g, "").toUpperCase();
+       const rawVal = token.value.replace(/["`\[\]]/g, "");
+       const upper = rawVal.toUpperCase();
        const target = aliasMap.get(upper);
-       if (target && target.kind === "table" && target.originalAlias && target.originalAlias !== token.value.replace(/["`\[\]]/g, "")) {
+       
+       if (target && (target.kind === "table" || target.kind === "cte")) {
+           const targetName = target.name;
            const prevIdx = skipIgnoredBackwards(tokens, i - 1);
            if (prevIdx >= 0) {
               const prevVal = tokens[prevIdx].value.toUpperCase();
               if (prevVal !== "AS" && !KEYWORDS.has(prevVal)) {
+                  const newValue = `${targetName}[${rawVal}]`;
+                  const hasChanged = newValue !== token.value;
+
                   resultTokens.push({
                     ...token,
-                    value: target.originalAlias,
+                    value: newValue,
                     originalValue: token.value,
-                    isResolved: true
+                    isResolved: hasChanged
                   });
-                  changeCount++;
+                  if (hasChanged) changeCount++;
                   continue;
               }
            }
@@ -414,3 +428,4 @@ function buildResult(tokens: Token[], aliasMap: Map<string, AliasTarget>, unknow
     tokens
   };
 }
+
