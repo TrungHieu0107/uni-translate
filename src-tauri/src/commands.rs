@@ -140,6 +140,15 @@ pub fn get_active_sheets(state: State<'_, AppStateWrapper>) -> Result<Vec<String
 }
 
 #[tauri::command]
+pub fn get_dictionary_stats(state: State<'_, AppStateWrapper>) -> Result<DictionaryStats, String> {
+    let s = state.0.lock().map_err(|e| e.to_string())?;
+    Ok(DictionaryStats {
+        total_entries: s.ja_to_en.len(),
+        active_sheets: s.active_table_sheets.len(),
+    })
+}
+
+#[tauri::command]
 pub async fn reload_files(
     file_paths: Vec<String>, 
     state: State<'_, AppStateWrapper>, 

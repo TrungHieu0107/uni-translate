@@ -21,21 +21,30 @@ pub fn run() {
             let app_handle = app.handle().clone();
             let state = app.state::<AppStateWrapper>();
             
-            // Load persistent files on startup
-            let config = storage::load_config(&app_handle);
-            let mut app_state = state.0.lock().unwrap();
-            
-            app_state.active_table_sheets = config.active_table_sheets.into_iter().collect();
-
-            for file_data in config.files {
-                // Use the parallel parser (synchronously here in setup is fine)
-                if let Ok(mut file_info) = parser::parse_excel_file_parallel(&file_data.path, app_handle.clone()) {
-                    file_info.enabled = file_data.enabled;
-                    app_state.loaded_files.insert(file_data.path.clone(), file_info);
+            // Load persistent files on startup in background
+            tauri::async_runtime::spawn(async move {
+                let config = storage::load_config(&app_handle);
+                
+                // Parse files (can take a while)
+                let mut loaded = Vec::new();
+                for file_data in config.files {
+                    if let Ok(mut file_info) = parser::parse_excel_file_parallel(&file_data.path, app_handle.clone()) {
+                        file_info.enabled = file_data.enabled;
+                        loaded.push((file_data.path, file_info));
+                    }
                 }
-            }
-            // re-index after loading all files
-            app_state.rebuild_dictionary(&app_handle);
+
+                // Lock state and apply
+                let state = app_handle.state::<AppStateWrapper>();
+                let mut app_state = state.0.lock().unwrap();
+                app_state.active_table_sheets = config.active_table_sheets.into_iter().collect();
+                
+                for (path, info) in loaded {
+                    app_state.loaded_files.insert(path, info);
+                }
+                
+                app_state.rebuild_dictionary(&app_handle);
+            });
             
             Ok(())
         })
@@ -44,6 +53,7 @@ pub fn run() {
             commands::load_excel_files,
             commands::update_table_selection,
             commands::get_active_sheets,
+            commands::get_dictionary_stats,
             commands::reload_files,
             commands::search,
             commands::list_loaded_files,

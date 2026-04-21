@@ -57,9 +57,7 @@ export function useDictionary() {
       const loadedFiles = await invoke<FileInfo[]>("list_loaded_files");
       setFiles(loadedFiles);
       
-      const stats = await invoke<DictionaryStats>("update_table_selection", { 
-        selectedCacheKeys: await invoke<string[]>("get_active_sheets") 
-      });
+      const stats = await invoke<DictionaryStats>("get_dictionary_stats");
       setTotalEntries(stats.total_entries);
       setActiveSheetsCount(stats.active_sheets);
     } catch (err) {
