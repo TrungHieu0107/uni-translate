@@ -55,7 +55,7 @@ static AC_SQL: Lazy<AhoCorasick> = Lazy::new(|| {
         .ascii_case_insensitive(true)
         .match_kind(MatchKind::LeftmostFirst)
         .build(SQL_KEYWORDS)
-        .expect("Failed to build SQL AhoCorasick")
+        .unwrap_or_else(|_| AhoCorasick::builder().build(&[] as &[&str]).unwrap_or_else(|_| AhoCorasick::new(&[""]).unwrap()))
 });
 
 pub fn analyze_sql(query: &str) -> SqlAnalysis {
@@ -218,7 +218,9 @@ fn preprocess_sql(query: &str) -> String {
             if c == quote_char {
                 // Handle escaped quotes (e.g., '')
                 if chars.peek() == Some(&quote_char) {
-                    result.push(chars.next().unwrap());
+                    if let Some(next_c) = chars.next() {
+                        result.push(next_c);
+                    }
                 } else {
                     in_string = false;
                 }
@@ -345,5 +347,13 @@ mod tests {
         let sql = "SELECT '-- not a comment' FROM DUAL";
         let cleaned = preprocess_sql(sql);
         assert!(cleaned.contains("-- not a comment"));
+    }
+
+    #[test]
+    fn test_unclosed_quote_no_panic() {
+        let sql = "SELECT 'unclosed FROM USERS";
+        let cleaned = preprocess_sql(sql);
+        // Should not panic, and should process the string as an unclosed literal
+        assert_eq!(cleaned, "SELECT 'unclosed FROM USERS");
     }
 }

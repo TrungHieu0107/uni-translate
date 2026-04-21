@@ -36,7 +36,7 @@ pub fn run() {
 
                 // Lock state and apply
                 let state = app_handle.state::<AppStateWrapper>();
-                let mut app_state = state.0.lock().unwrap();
+                let mut app_state = state.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
                 app_state.active_table_sheets = config.active_table_sheets.into_iter().collect();
                 
                 for (path, info) in loaded {

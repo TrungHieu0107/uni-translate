@@ -10,6 +10,8 @@ export function useTableSelection(files: FileInfo[]) {
   } = useDictionary();
   
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const clearError = useCallback(() => setError(null), []);
   
   const knownSheets = useMemo(() => {
     if (!scanResult) return [];
@@ -53,8 +55,9 @@ export function useTableSelection(files: FileInfo[]) {
           const active = await getActiveSheets();
           lastAppliedRef.current = [...active].sort().join('|');
           setManualSelectedSheets(active);
-        } catch (err) {
+        } catch (err: any) {
           console.error("Failed to initialize table selection", err);
+          setError(err.toString());
         }
       } else {
         setScanResult(null);
@@ -118,8 +121,9 @@ export function useTableSelection(files: FileInfo[]) {
     try {
       setIsApplying(true);
       await updateTableSelection(currentSelection);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to apply selection", err);
+      setError(err.toString());
     } finally {
       setIsApplying(false);
     }
@@ -166,8 +170,9 @@ export function useTableSelection(files: FileInfo[]) {
       
       const active = await getActiveSheets();
       setManualSelectedSheets(active);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to refresh table selection", err);
+      setError(err.toString());
     } finally {
       setIsApplying(false);
     }
@@ -184,6 +189,8 @@ export function useTableSelection(files: FileInfo[]) {
     refreshScan,
     addAutoSelection,
     removeAutoSelection,
-    setManualSelectedSheets
+    setManualSelectedSheets,
+    error,
+    clearError
   };
 }

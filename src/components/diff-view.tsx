@@ -1,4 +1,3 @@
-import React from "react";
 import { Token } from "../lib/sql-alias-resolver";
 
 interface DiffViewProps {

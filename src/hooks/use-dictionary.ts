@@ -51,6 +51,9 @@ export function useDictionary() {
   const [totalEntries, setTotalEntries] = useState(0);
   const [activeSheetsCount, setActiveSheetsCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  
+  const clearError = useCallback(() => setError(null), []);
 
   const fetchFiles = useCallback(async () => {
     try {
@@ -60,8 +63,9 @@ export function useDictionary() {
       const stats = await invoke<DictionaryStats>("get_dictionary_stats");
       setTotalEntries(stats.total_entries);
       setActiveSheetsCount(stats.active_sheets);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to fetch files", err);
+      setError(err.toString());
     }
   }, []);
 
@@ -87,8 +91,9 @@ export function useDictionary() {
       
       const paths = Array.isArray(selected) ? selected : [selected];
       await loadFilesByPath(paths);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to open dialog", err);
+      setError(err.toString());
     }
   }, []);
 
@@ -117,8 +122,9 @@ export function useDictionary() {
       setTotalEntries(res.total_entries);
       setActiveSheetsCount(res.active_sheets);
       await fetchFiles(); // Refresh file counts
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to update selection", err);
+      setError(err.toString());
     } finally {
       setIsLoading(false);
     }
@@ -133,8 +139,9 @@ export function useDictionary() {
       setIsLoading(true);
       await invoke("remove_file", { filePath: path });
       await fetchFiles();
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to remove file", err);
+      setError(err.toString());
     } finally {
       setIsLoading(false);
     }
@@ -145,8 +152,9 @@ export function useDictionary() {
       setIsLoading(true);
       await invoke("toggle_file_enabled", { filePath: path, enabled });
       await fetchFiles();
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to toggle file", err);
+      setError(err.toString());
     } finally {
       setIsLoading(false);
     }
@@ -157,8 +165,9 @@ export function useDictionary() {
       setIsLoading(true);
       await invoke("toggle_all_files", { enabled });
       await fetchFiles();
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to toggle all files", err);
+      setError(err.toString());
     } finally {
       setIsLoading(false);
     }
@@ -171,8 +180,9 @@ export function useDictionary() {
       setFiles([]);
       setTotalEntries(0);
       setActiveSheetsCount(0);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to reset dictionary", err);
+      setError(err.toString());
     } finally {
       setIsLoading(false);
     }
@@ -186,9 +196,9 @@ export function useDictionary() {
       const res = await invoke<LoadResult>("reload_files", { filePaths: paths });
       setFiles(res.files);
       setTotalEntries(res.total_entries);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to reload files", err);
-      alert("Failed to reload files: " + err);
+      setError(err.toString());
     } finally {
       setIsLoading(false);
     }
@@ -200,9 +210,9 @@ export function useDictionary() {
       const res = await invoke<LoadResult>("reload_files", { filePaths: [path] });
       setFiles(res.files);
       setTotalEntries(res.total_entries);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to reload file", err);
-      alert("Failed to reload file: " + err);
+      setError(err.toString());
     } finally {
       setIsLoading(false);
     }
@@ -213,9 +223,10 @@ export function useDictionary() {
     if (!trimmedKeyword) return null;
     try {
       return await invoke<SearchResult>("search", { keyword: trimmedKeyword });
-    } catch (err) {
+    } catch (err: any) {
       console.error("Search failed", err);
-      return null;
+      setError(err.toString());
+      return { exact: [], prefix: [], substring: [] };
     }
   }, []);
 
@@ -224,6 +235,8 @@ export function useDictionary() {
     totalEntries,
     activeSheetsCount,
     isLoading,
+    error,
+    clearError,
     loadFiles,
     loadFilesByPath,
     removeFile,

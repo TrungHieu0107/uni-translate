@@ -29,7 +29,9 @@ function App() {
     reloadFile,
     search,
     toggleFileEnabled,
-    toggleAllFiles
+    toggleAllFiles,
+    error: dictError,
+    clearError: clearDictError
   } = useDictionary();
 
   // Show splash only on initial empty load
@@ -64,7 +66,9 @@ function App() {
     toggleAllVisible,
     refreshScan,
     addAutoSelection,
-    removeAutoSelection
+    removeAutoSelection,
+    error: tableError,
+    clearError: clearTableError
   } = useTableSelection(files);
 
   const [isSearching, setIsSearching] = useState(false);
@@ -124,6 +128,19 @@ function App() {
       />
       
       <main className="flex-1 flex flex-col bg-drac-bg-primary relative min-w-0">
+        {(dictError || tableError) && (
+          <div className="bg-red-500/10 border-b border-red-500/20 px-4 py-2 flex items-center justify-between shrink-0">
+            <span className="text-red-400 text-sm font-medium">
+              {dictError || tableError}
+            </span>
+            <button 
+              onClick={() => { clearDictError(); clearTableError(); }}
+              className="text-red-400 hover:text-red-300 text-sm p-1"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
         {/* App Top Tabs */}
         <div className="flex bg-drac-bg-secondary border-b border-drac-border px-4 py-2 gap-2 shrink-0">
           <button 
