@@ -305,12 +305,9 @@ export function resolveAliasesFromSQL(
     if (token.kind === "subquery") {
        const innerSQL = token.value.substring(1, token.value.length - 1);
        const subResult = resolveAliasesFromSQL(innerSQL, tableMappings, aliasMap);
-       resultTokens.push({
-         ...token,
-         value: `(${subResult.resolvedSQL})`,
-         originalValue: token.value,
-         isResolved: subResult.changeCount > 0
-       });
+       resultTokens.push({ kind: "punctuation", value: "(" });
+       resultTokens.push(...subResult.tokens);
+       resultTokens.push({ kind: "punctuation", value: ")" });
        changeCount += subResult.changeCount;
        subResult.unknownAliases.forEach(a => unknownAliasesSet.add(a));
        continue;
