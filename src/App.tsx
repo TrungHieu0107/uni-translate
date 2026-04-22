@@ -5,6 +5,7 @@ import { BulkTranslator } from "./components/bulk-translator";
 import { SQLAnalyzerTab } from "./components/sql-analyzer-tab";
 import { SQLResolverTab } from "./components/sql-resolver-tab";
 import { SQLVisualizerTab } from "./components/sql-visualizer-tab";
+import { SQLFormatterTab } from "./components/sql-formatter-tab";
 import { DictionaryTab } from "./components/dictionary-tab";
 import { TableSelectorPanel } from "./components/table-selector-panel";
 import { useTableSelection } from "./hooks/use-table-selection";
@@ -13,7 +14,7 @@ import { ParseProgressBar } from "./components/parse-progress-bar";
 import { SplashLoading } from "./components/splash-loading";
 import { Button } from "./components/ui/button";
 
-type ViewMode = "dictionary" | "translator" | "analyzer" | "resolver" | "visualizer";
+type ViewMode = "dictionary" | "translator" | "analyzer" | "resolver" | "visualizer" | "formatter";
 
 function App() {
   const { progress, startProgress, resetProgress } = useParseProgress();
@@ -177,6 +178,14 @@ function App() {
           >
             SQL Visualizer
           </Button>
+          <Button
+            variant={viewMode === "formatter" ? "accent" : "ghost"}
+            size="sm"
+            onClick={() => setViewMode("formatter")}
+            className="rounded-full px-5 h-9"
+          >
+            SQL Formatter
+          </Button>
         </nav>
 
         {viewMode === "dictionary" && (
@@ -204,6 +213,10 @@ function App() {
 
         {viewMode === "visualizer" && (
           <SQLVisualizerTab />
+        )}
+        
+        {viewMode === "formatter" && (
+          <SQLFormatterTab />
         )}
       </main>
 
