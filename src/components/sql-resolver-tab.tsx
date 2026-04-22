@@ -215,6 +215,12 @@ const [result, setResult] = useState<ResolveResult | null>(null);
                   {result?.resolvedSQL || inputSql}
                 </pre>
               )}
+
+              {copied && (
+                <div className="absolute top-4 right-4 bg-drac-success text-drac-bg-primary text-[10px] font-black px-3 py-1 rounded shadow-lg animate-bounce-in z-50 tracking-widest uppercase">
+                  Copied Resolved SQL
+                </div>
+              )}
             </div>
 
             {result && result.unknownAliases.length > 0 && (

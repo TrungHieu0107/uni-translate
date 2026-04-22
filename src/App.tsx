@@ -56,22 +56,45 @@ function App() {
     }
   };
 
+  const handleReloadFiles = async () => {
+    try {
+      startProgress();
+      await reloadFiles();
+    } finally {
+      resetProgress();
+    }
+  };
+
+  const handleReloadFile = async (path: string) => {
+    try {
+      startProgress();
+      await reloadFile(path);
+    } finally {
+      resetProgress();
+    }
+  };
+
   const {
     scanResult,
     selectedSheets,
+    manualSelectedSheets,
     isCollapsed,
     setIsCollapsed,
     isApplying,
+    isApplyingManual,
     toggleSheet,
     toggleAllVisible,
     refreshScan,
     addAutoSelection,
-    removeAutoSelection,
+    forceRemoveSelection,
     error: tableError,
     clearError: clearTableError
   } = useTableSelection(files);
 
   const [isSearching, setIsSearching] = useState(false);
+  const [internalLoading, setInternalLoading] = useState(false);
+  const [isFadingOut, setIsFadingOut] = useState(false);
+
   const [keyword, setKeyword] = useState("");
   const [results, setResults] = useState<SearchResult | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>(() => (localStorage.getItem("app_viewMode") as ViewMode) || "dictionary");
@@ -108,6 +131,24 @@ function App() {
     };
   }, [keyword, search, files]);
 
+  useEffect(() => {
+    if (isSearching) {
+      setInternalLoading(true);
+      setIsFadingOut(false);
+    } else if (internalLoading) {
+      // Data has arrived. Wait for DOM update & paint.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setIsFadingOut(true);
+          setTimeout(() => {
+            setInternalLoading(false);
+            setIsFadingOut(false);
+          }, 400); // 400ms transition duration
+        });
+      });
+    }
+  }, [isSearching, internalLoading]);
+
   if (isInitialLoading) {
     return <SplashLoading />;
   }
@@ -123,8 +164,8 @@ function App() {
         onToggleFileEnabled={toggleFileEnabled}
         onToggleAllFiles={toggleAllFiles}
         onReset={resetDictionary}
-        onReload={reloadFiles}
-        onReloadFile={reloadFile}
+        onReload={handleReloadFiles}
+        onReloadFile={handleReloadFile}
       />
       
       <main className="flex-1 flex flex-col bg-drac-bg-primary relative min-w-0">
@@ -183,18 +224,51 @@ function App() {
             />
             
             <div className="flex-1 overflow-hidden relative">
-              {isSearching && (
-                <div className="absolute inset-0 bg-drac-bg-primary/20 backdrop-blur-[3px] z-10 flex items-center justify-center animate-fade-in pointer-events-none">
-                  <div className="bg-drac-bg-secondary/60 p-8 rounded-3xl border border-drac-accent/30 shadow-2xl backdrop-blur-xl flex flex-col items-center gap-4">
-                    <div className="relative">
-                      <div className="w-12 h-12 border-2 border-drac-accent/30 rounded-full animate-ping opacity-20"></div>
+              {internalLoading && (
+                <div className={`absolute inset-0 bg-drac-bg-primary/80 backdrop-blur-md z-20 flex flex-col items-center justify-center overflow-hidden transition-all duration-400 ease-out ${isFadingOut ? 'opacity-0 scale-105 pointer-events-none' : 'opacity-100 scale-100'}`}>
+                  {/* Cyber Grid Background */}
+                  <div className="absolute inset-0 bg-[linear-gradient(rgba(139,233,253,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(139,233,253,0.05)_1px,transparent_1px)] bg-[size:20px_20px] [mask-image:radial-gradient(ellipse_60%_60%_at_50%_50%,#000_10%,transparent_100%)]" />
+                  <div className="absolute inset-0 bg-gradient-to-b from-transparent via-drac-text-secondary/10 to-transparent h-32 w-full animate-scanline opacity-40" />
+                  
+                  <div className="relative flex flex-col items-center justify-center p-10">
+                    <div className="relative w-28 h-28 flex items-center justify-center">
+                      {/* Outer Rings */}
+                      <svg className="absolute inset-0 w-full h-full text-drac-text-secondary/30 drop-shadow-[0_0_15px_rgba(139,233,253,0.5)]" viewBox="0 0 100 100" style={{ animation: 'spin 5s linear infinite' }}>
+                        <circle cx="50" cy="50" r="48" fill="none" stroke="currentColor" strokeWidth="1" strokeDasharray="15 5 20 10" />
+                        <circle cx="50" cy="50" r="42" fill="none" stroke="currentColor" strokeWidth="0.5" strokeDasharray="60 30" opacity="0.6" />
+                      </svg>
+                      
+                      {/* Inner Ring */}
+                      <svg className="absolute inset-3 w-22 h-22 text-drac-accent/60" viewBox="0 0 100 100" style={{ animation: 'spin 3s linear infinite reverse' }}>
+                        <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="10 20 5 10" />
+                      </svg>
+                      
+                      {/* Center Core */}
                       <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="w-8 h-8 border-4 border-drac-accent border-t-transparent rounded-full animate-spin"></div>
+                        <div className="w-12 h-12 bg-drac-text-secondary/20 rounded-full blur-xl animate-pulse-glow absolute" />
+                        <div className="w-6 h-6 border-2 border-drac-text-secondary rounded-sm rotate-45 animate-pulse drop-shadow-[0_0_10px_rgba(139,233,253,1)]" />
                       </div>
                     </div>
-                    <div className="flex flex-col items-center">
-                      <span className="text-[10px] font-black tracking-[0.5em] text-drac-accent animate-pulse uppercase">Searching Index</span>
-                      <span className="text-[8px] font-bold text-drac-text-secondary/50 tracking-widest uppercase mt-1">Direct Memory Access</span>
+                    
+                    {/* Status Text Area */}
+                    <div className="mt-8 flex flex-col items-center gap-2">
+                      <div className="flex items-center gap-3">
+                        <div className="h-px w-10 bg-gradient-to-r from-transparent to-drac-text-secondary/80" />
+                        <span className="text-[12px] font-black tracking-[0.5em] text-drac-text-secondary animate-pulse uppercase drop-shadow-[0_0_8px_rgba(139,233,253,0.8)]">
+                          Searching Index
+                        </span>
+                        <div className="h-px w-10 bg-gradient-to-l from-transparent to-drac-text-secondary/80" />
+                      </div>
+                      
+                      {/* Data Stream */}
+                      <div className="flex gap-1.5 opacity-80">
+                        <div className="w-2 h-1.5 bg-drac-text-secondary rounded-sm animate-bounce" style={{ animationDelay: '0ms' }} />
+                        <div className="w-2 h-1.5 bg-drac-text-secondary rounded-sm animate-bounce" style={{ animationDelay: '150ms' }} />
+                        <div className="w-2 h-1.5 bg-drac-text-secondary rounded-sm animate-bounce" style={{ animationDelay: '300ms' }} />
+                      </div>
+                      <span className="text-[9px] font-mono font-bold text-drac-text-secondary/60 tracking-[0.4em] uppercase mt-2">
+                        Direct Memory Access
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -213,8 +287,8 @@ function App() {
             scanResult={scanResult}
             selectedSheets={selectedSheets}
             onAutoAdd={addAutoSelection}
-            onAutoRemove={removeAutoSelection}
-            isApplying={isApplying}
+            onAutoRemove={forceRemoveSelection}
+            isApplying={isApplying && !progress}
           />
         )}
 
@@ -234,13 +308,14 @@ function App() {
       {viewMode === "translator" && (
         <TableSelectorPanel 
           scanResult={scanResult}
-          selectedSheets={selectedSheets}
+          selectedSheets={manualSelectedSheets}
           onToggleSheet={toggleSheet}
           onToggleAll={toggleAllVisible}
           onRefresh={refreshScan}
           isCollapsed={isCollapsed}
           onToggleCollapse={() => setIsCollapsed(!isCollapsed)}
           isApplying={isApplying}
+          isApplyingManual={isApplyingManual}
         />
       )}
 

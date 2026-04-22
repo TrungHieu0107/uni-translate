@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, forwardRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, forwardRef, useCallback } from "react";
 import { Copy, ArrowRightLeft, Languages, Check, Loader2, Plus, Trash2, GripHorizontal, RefreshCw, Database } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { SheetMeta, ScanResult } from "../hooks/use-dictionary";
@@ -71,7 +71,7 @@ function decodeBinaryResponse(buffer: ArrayBuffer): BulkTranslateResult {
   return { outputText, inputSpans, outputSpans };
 }
 
-const SegmentedViewer = forwardRef<HTMLDivElement, { 
+const SegmentedViewer = React.memo(forwardRef<HTMLDivElement, { 
   text: string,
   spans: MatchSpan[], 
   className?: string, 
@@ -81,44 +81,48 @@ const SegmentedViewer = forwardRef<HTMLDivElement, {
   setHoverMatchId: (id: number | null) => void,
   onScroll?: (e: React.UIEvent<HTMLDivElement>) => void
 }>(({ text, spans, className, placeholder, onManualClick, hoverMatchId, setHoverMatchId, onScroll }, ref) => {
+  const elements = useMemo(() => {
+    if (!text && placeholder) return null;
+
+    const result: any[] = [];
+    let lastPos = 0;
+
+    spans.forEach((span, idx) => {
+      // Add plain text before match
+      if (span.start > lastPos) {
+        result.push(<span key={`p-${idx}`}>{text.slice(lastPos, span.start)}</span>);
+      }
+      // Add highlighted match
+      result.push(
+        <span
+          key={`m-${idx}`}
+          className={`transition-all duration-150 rounded text-drac-accent font-bold cursor-help ${
+            hoverMatchId !== null && span.match_id === hoverMatchId 
+              ? "bg-drac-accent/30 text-drac-accent-hover ring-1 ring-drac-accent/50" 
+              : ""
+          }`}
+          onMouseEnter={() => setHoverMatchId(span.match_id)}
+          onMouseLeave={() => setHoverMatchId(null)}
+        >
+          {text.slice(span.start, span.end)}
+        </span>
+      );
+      lastPos = span.end;
+    });
+
+    // Add remaining text
+    if (lastPos < text.length) {
+      result.push(<span key="final">{text.slice(lastPos)}</span>);
+    }
+    return result;
+  }, [text, spans, placeholder, hoverMatchId, setHoverMatchId]);
+
   if (!text && placeholder) {
     return (
       <div className={`p-4 text-drac-text-secondary italic text-sm ${className}`} onClick={onManualClick}>
         {placeholder}
       </div>
     );
-  }
-
-  // Render text segments by splitting on-the-fly using spans
-  const elements: any[] = [];
-  let lastPos = 0;
-
-  spans.forEach((span, idx) => {
-    // Add plain text before match
-    if (span.start > lastPos) {
-      elements.push(<span key={`p-${idx}`}>{text.slice(lastPos, span.start)}</span>);
-    }
-    // Add highlighted match
-    elements.push(
-      <span
-        key={`m-${idx}`}
-        className={`transition-all duration-150 rounded text-drac-accent font-bold cursor-help ${
-          hoverMatchId !== null && span.match_id === hoverMatchId 
-            ? "bg-drac-accent/30 text-drac-accent-hover ring-1 ring-drac-accent/50" 
-            : ""
-        }`}
-        onMouseEnter={() => setHoverMatchId(span.match_id)}
-        onMouseLeave={() => setHoverMatchId(null)}
-      >
-        {text.slice(span.start, span.end)}
-      </span>
-    );
-    lastPos = span.end;
-  });
-
-  // Add remaining text
-  if (lastPos < text.length) {
-    elements.push(<span key="final">{text.slice(lastPos)}</span>);
   }
 
   return (
@@ -131,11 +135,11 @@ const SegmentedViewer = forwardRef<HTMLDivElement, {
       {elements}
     </div>
   );
-});
+}));
 
 SegmentedViewer.displayName = "SegmentedViewer";
 
-function SessionRow({ 
+const SessionRow = React.memo(({ 
   session, 
   index, 
   disabled, 
@@ -150,7 +154,8 @@ function SessionRow({
   knownSheets,
   activeSelection,
   onAutoAdd,
-  onAutoRemove
+  onAutoRemove,
+  isApplying
 }: { 
   session: Session, 
   index: number, 
@@ -166,8 +171,9 @@ function SessionRow({
   knownSheets: SheetMeta[],
   activeSelection: Set<string>,
   onAutoAdd: (sheetNames: string[]) => Promise<void>,
-  onAutoRemove: (sheetNames: string[]) => Promise<void>
-}) {
+  onAutoRemove: (sheetNames: string[]) => Promise<void>,
+  isApplying: boolean
+}) => {
   const inputRef = useRef<any>(null);
   const outputRef = useRef<HTMLDivElement>(null);
   const isSyncing = useRef(false);
@@ -176,6 +182,8 @@ function SessionRow({
     detectionResult,
     handleInput,
     dismissBanner,
+    toggleExclusion,
+    excludedTables,
   } = useAutoTableDetect(
     knownSheets,
     activeSelection,
@@ -206,7 +214,7 @@ function SessionRow({
     }
   };
 
-  const handleScroll = (source: 'input' | 'output') => (e: any) => {
+  const handleScroll = useCallback((source: 'input' | 'output') => (e: any) => {
     if (isSyncing.current) return;
     
     const target = source === 'input' ? outputRef.current : inputRef.current;
@@ -220,7 +228,32 @@ function SessionRow({
         });
       });
     }
-  };
+  }, []);
+
+  const isSessionTranslating = session.isTranslating;
+  const isSystemSyncing = isApplying;
+  const showOverlay = isSessionTranslating || isSystemSyncing;
+  
+  const [internalLoading, setInternalLoading] = useState(false);
+  const [isFadingOut, setIsFadingOut] = useState(false);
+
+  useEffect(() => {
+    if (showOverlay) {
+      setInternalLoading(true);
+      setIsFadingOut(false);
+    } else if (internalLoading) {
+      // Content updated in props. Wait for render & paint.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setIsFadingOut(true);
+          setTimeout(() => {
+            setInternalLoading(false);
+            setIsFadingOut(false);
+          }, 400); // 400ms transition
+        });
+      });
+    }
+  }, [showOverlay, internalLoading]);
 
   return (
     <div className="flex flex-col bg-drac-bg-secondary rounded-xl border border-drac-border shadow-lg animate-slide-up relative group overflow-hidden">
@@ -251,12 +284,12 @@ function SessionRow({
               </button>
               
               <button 
-                className={`p-1 rounded hover:bg-drac-bg-secondary transition-colors ${session.isTranslating ? 'animate-spin text-drac-accent' : 'text-drac-success'}`}
+                className={`p-1 rounded hover:bg-drac-bg-secondary transition-colors ${isSessionTranslating ? 'animate-spin text-drac-accent' : 'text-drac-success'}`}
                 onClick={() => handleTranslate(session.id)}
-                disabled={disabled || session.isTranslating || !session.input.trim()}
+                disabled={disabled || isSessionTranslating || isSystemSyncing || !session.input.trim()}
                 title="Force translate now"
               >
-                {session.isTranslating ? <Loader2 size={12} /> : <Languages size={12} />}
+                {isSessionTranslating ? <Loader2 size={12} /> : <Languages size={12} />}
               </button>
             </div>
             {session.isInputFocused || !session.inputSpans.length ? (
@@ -300,7 +333,7 @@ function SessionRow({
           </div>
 
           {/* Output Box */}
-          <div className="flex-1 flex flex-col bg-drac-bg-primary rounded-lg border border-drac-border overflow-hidden shadow-inner relative">
+          <div className="flex-1 flex flex-col bg-drac-bg-primary rounded-lg border border-drac-border overflow-hidden shadow-inner relative group/output">
             <div className="bg-drac-bg-tertiary px-3 py-1.5 flex justify-between items-center border-b border-drac-border/50">
               <button 
                 className="text-[10px] font-bold uppercase tracking-widest text-drac-text-secondary hover:text-drac-text-primary flex items-center gap-1 transition-colors"
@@ -311,16 +344,78 @@ function SessionRow({
                 <RefreshCw size={10} className="opacity-50" />
               </button>
             </div>
-            <SegmentedViewer 
-              ref={outputRef}
-              text={session.output}
-              spans={session.outputSpans}
-              className="flex-1"
-              placeholder="Translation will appear here..."
-              hoverMatchId={hoverMatchId}
-              setHoverMatchId={setHoverMatchId}
-              onScroll={handleScroll('output')}
-            />
+            
+            <div className="flex-1 relative overflow-hidden">
+              <SegmentedViewer 
+                ref={outputRef}
+                text={session.output}
+                spans={session.outputSpans}
+                className="h-full"
+                placeholder="Translation will appear here..."
+                hoverMatchId={hoverMatchId}
+                setHoverMatchId={setHoverMatchId}
+                onScroll={handleScroll('output')}
+              />
+
+              {internalLoading && (
+                <div className={`absolute inset-0 bg-drac-bg-primary/80 backdrop-blur-md z-20 flex flex-col items-center justify-center overflow-hidden transition-all duration-400 ease-out ${isFadingOut ? 'opacity-0 scale-105 pointer-events-none' : 'opacity-100 scale-100'}`}>
+                  {/* Scanning background elements */}
+                  <div className="absolute inset-0 bg-[linear-gradient(rgba(189,147,249,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(189,147,249,0.05)_1px,transparent_1px)] bg-[size:20px_20px] [mask-image:radial-gradient(ellipse_60%_60%_at_50%_50%,#000_10%,transparent_100%)]" />
+                  <div className="absolute inset-0 bg-gradient-to-b from-transparent via-drac-accent/10 to-transparent h-32 w-full animate-scanline opacity-40" />
+                  
+                  {/* Core Loader Object */}
+                  <div className="relative flex flex-col items-center justify-center p-8">
+                    <div className="relative w-24 h-24 flex items-center justify-center">
+                      {/* Outer spinning rings */}
+                      <svg className="absolute inset-0 w-full h-full text-drac-accent/30 drop-shadow-[0_0_10px_rgba(189,147,249,0.5)]" viewBox="0 0 100 100" style={{ animation: 'spin 4s linear infinite' }}>
+                        <circle cx="50" cy="50" r="48" fill="none" stroke="currentColor" strokeWidth="1" strokeDasharray="10 5 30 15" opacity="0.5" />
+                        <circle cx="50" cy="50" r="40" fill="none" stroke="currentColor" strokeWidth="1" strokeDasharray="50 20" opacity="0.8" />
+                      </svg>
+                      
+                      {/* Inner counter-rotating ring */}
+                      <svg className="absolute inset-2 w-20 h-20 text-drac-text-secondary/50" viewBox="0 0 100 100" style={{ animation: 'spin 3s linear infinite reverse' }}>
+                        <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="20 10 5 10" />
+                      </svg>
+                      
+                      {/* Center pulsing core */}
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="w-10 h-10 bg-drac-accent/20 rounded-full blur-md animate-pulse-glow absolute" />
+                        <Database size={24} className="text-drac-accent animate-pulse relative z-10 drop-shadow-[0_0_8px_rgba(189,147,249,1)]" />
+                      </div>
+                    </div>
+                    
+                    {/* Status Text Area */}
+                    <div className="mt-8 flex flex-col items-center gap-2">
+                      <div className="flex items-center gap-3">
+                        <div className="h-px w-8 bg-gradient-to-r from-transparent to-drac-accent/80" />
+                        <span className="text-[11px] font-black text-drac-accent tracking-[0.4em] animate-pulse uppercase drop-shadow-[0_0_8px_rgba(189,147,249,0.8)]">
+                          {isApplying ? "Syncing Dictionary..." : "Neural Matrix Active..."}
+                        </span>
+                        <div className="h-px w-8 bg-gradient-to-l from-transparent to-drac-accent/80" />
+                      </div>
+                      
+                      {/* Hex Data Stream */}
+                      <div className="flex gap-1.5 opacity-70">
+                         <div className="w-4 h-1 bg-drac-accent rounded-sm animate-pulse" style={{ animationDelay: '0ms' }} />
+                         <div className="w-2 h-1 bg-drac-accent/60 rounded-sm animate-pulse" style={{ animationDelay: '150ms' }} />
+                         <div className="w-6 h-1 bg-drac-text-secondary/80 rounded-sm animate-pulse" style={{ animationDelay: '300ms' }} />
+                         <div className="w-3 h-1 bg-drac-accent/80 rounded-sm animate-pulse" style={{ animationDelay: '450ms' }} />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-[9px] font-mono font-bold text-drac-text-secondary/50 tracking-[0.3em] uppercase">
+                    System processing translation vectors
+                  </div>
+                </div>
+              )}
+
+              {session.copied && (
+                <div className="absolute top-4 right-4 bg-drac-success text-drac-bg-primary text-[10px] font-black px-3 py-1 rounded shadow-lg animate-bounce-in z-50 tracking-widest uppercase">
+                  Copied to clipboard
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -330,6 +425,8 @@ function SessionRow({
             result={detectionResult}
             isApplied={true}
             onDismiss={dismissBanner}
+            onToggleExclusion={toggleExclusion}
+            excludedTables={excludedTables}
           />
         )}
 
@@ -374,25 +471,11 @@ function SessionRow({
           <GripHorizontal size={12} className="text-drac-border opacity-0 group-hover/handle:opacity-100 transition-opacity" />
         </div>
 
-        {/* Translation Overlay */}
-        {session.isTranslating && (
-          <div className="absolute inset-0 bg-drac-bg-secondary/20 backdrop-blur-[3px] z-[60] flex items-center justify-center animate-fade-in pointer-events-none">
-            <div className="flex flex-col items-center gap-4 bg-drac-bg-primary/60 p-8 rounded-3xl border border-drac-accent/30 shadow-[0_0_50px_rgba(189,147,249,0.15)] backdrop-blur-xl">
-              <div className="relative">
-                <Loader2 className="text-drac-accent animate-spin" size={32} />
-                <div className="absolute inset-0 bg-drac-accent/20 blur-xl animate-pulse"></div>
-              </div>
-              <div className="flex flex-col items-center gap-1">
-                <span className="text-[11px] font-black text-drac-accent tracking-[0.4em] animate-pulse">PROCESSING</span>
-                <span className="text-[9px] font-bold text-drac-text-secondary/60 tracking-widest">Neural Mapping Engine v2</span>
-              </div>
-            </div>
-          </div>
-        )}
+
       </div>
     </div>
   );
-}
+});
 
 
 export function BulkTranslator({ 
@@ -589,6 +672,10 @@ export function BulkTranslator({
     };
   }, [resizingId]);
 
+  const inputsJoined = sessions.map(s => s.input).join('|');
+  const directionsJoined = sessions.map(s => s.direction).join('|');
+  const sheetsJoined = selectedSheets.join('|');
+
   useEffect(() => {
     // Don't trigger translation while the backend is busy rebuilding the dictionary
     if (isApplying) return;
@@ -615,12 +702,7 @@ export function BulkTranslator({
     return () => {
       Object.values(timersRef.current).forEach(window.clearTimeout);
     };
-  }, [
-    sessions.map(s => s.input).join('|'), 
-    sessions.map(s => s.direction).join('|'),
-    selectedSheets.join('|'),
-    isApplying
-  ]);
+  }, [inputsJoined, directionsJoined, sheetsJoined, isApplying]);
 
   return (
     <div className="flex flex-col h-full w-full bg-drac-bg-primary text-drac-text-primary overflow-hidden">
@@ -658,6 +740,7 @@ export function BulkTranslator({
               activeSelection={activeSelectionSet}
               onAutoAdd={onAutoAdd}
               onAutoRemove={onAutoRemove}
+              isApplying={isApplying}
             />
           ))}
 

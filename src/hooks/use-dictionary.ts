@@ -32,13 +32,20 @@ export interface FileInfo {
   enabled: boolean;
 }
 
+export interface FileError {
+  path: string;
+  error: string;
+}
+
 export interface LoadResult {
   total_entries: number;
   files: FileInfo[];
+  errors: FileError[];
 }
 
 export interface ScanResult {
   files: FileInfo[];
+  errors: FileError[];
 }
 
 export interface DictionaryStats {
@@ -192,12 +199,25 @@ export function useDictionary() {
     if (files.length === 0) return;
     try {
       setIsLoading(true);
+      setError(null);
       const paths = files.map(f => f.path);
       const res = await invoke<LoadResult>("reload_files", { filePaths: paths });
       setFiles(res.files);
       setTotalEntries(res.total_entries);
+
+      if (res.errors.length > 0) {
+        const allFailed = res.errors.length === paths.length;
+        const failedNames = res.errors
+          .map(e => e.path.split(/[\\/]/).pop() ?? e.path)
+          .join(", ");
+        setError(
+          allFailed
+            ? `Reload thất bại: ${failedNames}`
+            : `Reload thành công một phần. Lỗi: ${failedNames}`
+        );
+      }
     } catch (err: any) {
-      console.error("Failed to reload files", err);
+      console.error("reload_files command failed", err);
       setError(err.toString());
     } finally {
       setIsLoading(false);
@@ -207,11 +227,16 @@ export function useDictionary() {
   const reloadFile = useCallback(async (path: string) => {
     try {
       setIsLoading(true);
+      setError(null);
       const res = await invoke<LoadResult>("reload_files", { filePaths: [path] });
       setFiles(res.files);
       setTotalEntries(res.total_entries);
+
+      if (res.errors.length > 0) {
+        setError(`Không thể reload: ${res.errors[0].error}`);
+      }
     } catch (err: any) {
-      console.error("Failed to reload file", err);
+      console.error("reload_files command failed", err);
       setError(err.toString());
     } finally {
       setIsLoading(false);

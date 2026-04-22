@@ -112,7 +112,7 @@ hex = "0.4.3" # Hex encoding for hashes
   "identifier": "com.alias.unitranslate",
   "build": {
     "beforeDevCommand": "npm run dev",
-    "devUrl": "http://localhost:1420",
+    "devUrl": "http://localhost:1421",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },

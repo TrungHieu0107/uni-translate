@@ -125,7 +125,7 @@ export function PathCard({ path, translations }: PathCardProps) {
           </div>
 
           {/* SQL Preview Section */}
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 relative">
             <div className="flex items-center justify-between ml-1">
               <div className="flex items-center gap-2 text-drac-text-secondary">
                 <Code2 size={14} />
@@ -148,13 +148,25 @@ export function PathCard({ path, translations }: PathCardProps) {
             {showDeepAnalysis && analysis && (
               <SQLDeepAnalysis sql={path.fullSql} analysis={analysis} />
             )}
-
+ 
             {!showDeepAnalysis && (
-              <textarea
-                readOnly
-                className="w-full p-3 bg-drac-bg-primary border border-drac-border rounded-lg text-xs font-mono text-drac-text-primary resize-y h-32 min-h-[80px] max-h-[500px] outline-none scrollbar-dracula whitespace-pre"
-                value={path.fullSql}
-              />
+              <div className="relative">
+                <textarea
+                  readOnly
+                  className="w-full p-3 bg-drac-bg-primary border border-drac-border rounded-lg text-xs font-mono text-drac-text-primary resize-y h-32 min-h-[80px] max-h-[500px] outline-none scrollbar-dracula whitespace-pre"
+                  value={path.fullSql}
+                />
+                {copiedSql && (
+                  <div className="absolute top-4 right-4 bg-drac-success text-drac-bg-primary text-[10px] font-black px-3 py-1 rounded shadow-lg animate-bounce-in z-50 tracking-widest uppercase">
+                    SQL Copied
+                  </div>
+                )}
+                {copiedCols && (
+                  <div className="absolute top-4 right-4 bg-drac-success text-drac-bg-primary text-[10px] font-black px-3 py-1 rounded shadow-lg animate-bounce-in z-50 tracking-widest uppercase">
+                    Columns Copied
+                  </div>
+                )}
+              </div>
             )}
           </div>
 

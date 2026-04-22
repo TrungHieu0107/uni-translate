@@ -24,6 +24,7 @@ interface TableSelectorPanelProps {
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   isApplying: boolean;
+  isApplyingManual?: boolean;
 }
 
 export function TableSelectorPanel({
@@ -34,7 +35,8 @@ export function TableSelectorPanel({
   onRefresh,
   isCollapsed,
   onToggleCollapse,
-  isApplying
+  isApplying,
+  isApplyingManual = false
 }: TableSelectorPanelProps) {
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -169,7 +171,7 @@ export function TableSelectorPanel({
       </div>
 
       <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
-        {isApplying && (
+        {isApplyingManual && (
           <div className="absolute inset-0 bg-drac-bg-secondary/20 backdrop-blur-[2px] z-50 flex items-center justify-center animate-fade-in pointer-events-none">
              <div className="flex flex-col items-center gap-3 bg-drac-bg-primary/70 p-6 rounded-2xl border border-drac-accent/30 shadow-2xl backdrop-blur-xl">
                 <div className="relative">

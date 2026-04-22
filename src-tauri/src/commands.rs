@@ -7,14 +7,22 @@ use tauri::{State, AppHandle};
 use std::collections::HashSet;
 
 #[derive(Serialize)]
+pub struct FileError {
+    pub path: String,
+    pub error: String,
+}
+
+#[derive(Serialize)]
 pub struct LoadResult {
     pub total_entries: usize,
     pub files: Vec<FileInfo>,
+    pub errors: Vec<FileError>,
 }
 
 #[derive(Serialize)]
 pub struct ScanResult {
     pub files: Vec<FileInfo>,
+    pub errors: Vec<FileError>,
 }
 
 #[derive(Serialize)]
@@ -30,31 +38,43 @@ pub async fn scan_excel_sheets(
     app_handle: AppHandle,
 ) -> Result<ScanResult, String> {
     let h = app_handle.clone();
-    let results = tokio::task::spawn_blocking(move || {
-        file_paths
-            .iter()
-            .map(|path| parse_excel_file_parallel(path, h.clone()))
+    let paths_clone = file_paths.clone();
+    
+    // Parse ngoài lock — blocking I/O không nên giữ Mutex
+    let path_result_pairs = tokio::task::spawn_blocking(move || {
+        paths_clone
+            .into_iter()
+            .map(|path| {
+                let result = parse_excel_file_parallel(&path, h.clone());
+                (path, result)
+            })
             .collect::<Vec<_>>()
     })
     .await
     .map_err(|e| format!("Scan task failed: {}", e))?;
 
     let mut files = Vec::new();
-    let mut state = state.0.lock().map_err(|e| e.to_string())?;
-    
-    for result in results {
-        match result {
-            Ok(info) => {
-                files.push(info.clone());
-                state.loaded_files.insert(info.path.clone(), info);
+    let mut file_errors: Vec<FileError> = Vec::new();
+
+    {
+        let mut s = state.0.lock().map_err(|e| e.to_string())?;
+        
+        for (path, result) in path_result_pairs {
+            match result {
+                Ok(info) => {
+                    files.push(info.clone());
+                    s.loaded_files.insert(info.path.clone(), info);
+                }
+                Err(e) => {
+                    file_errors.push(FileError { path, error: e });
+                }
             }
-            Err(e) => return Err(e),
         }
+
+        s.rebuild_search_dictionary();
     }
 
-    state.rebuild_search_dictionary();
-
-    Ok(ScanResult { files })
+    Ok(ScanResult { files, errors: file_errors })
 }
 
 #[tauri::command]
@@ -65,20 +85,26 @@ pub async fn load_excel_files(
     app_handle: AppHandle
 ) -> Result<LoadResult, String> {
     let h = app_handle.clone();
-    let results = tokio::task::spawn_blocking(move || {
-        file_paths
-            .iter()
-            .map(|path| parse_excel_file_parallel(path, h.clone()))
+    let paths_clone = file_paths.clone();
+
+    let path_result_pairs = tokio::task::spawn_blocking(move || {
+        paths_clone
+            .into_iter()
+            .map(|path| {
+                let result = parse_excel_file_parallel(&path, h.clone());
+                (path, result)
+            })
             .collect::<Vec<_>>()
     })
     .await
     .map_err(|e| format!("Parse task failed: {}", e))?;
 
-    let (config, files, total_entries) = {
+    let (config, files, total_entries, file_errors) = {
         let mut s = state.0.lock().map_err(|e| e.to_string())?;
         let selected_set: HashSet<String> = selected_table_sheets.into_iter().collect();
+        let mut file_errors: Vec<FileError> = Vec::new();
         
-        for result in results {
+        for (path, result) in path_result_pairs {
             match result {
                 Ok(info) => {
                     // Add all sheets that are explicitly selected
@@ -89,7 +115,9 @@ pub async fn load_excel_files(
                     }
                     s.loaded_files.insert(info.path.clone(), info);
                 }
-                Err(e) => return Err(e),
+                Err(e) => {
+                    file_errors.push(FileError { path, error: e });
+                }
             }
         }
 
@@ -99,7 +127,7 @@ pub async fn load_excel_files(
         let mut files: Vec<FileInfo> = s.loaded_files.values().cloned().collect();
         files.sort_by(|a, b| a.name.cmp(&b.name));
         
-        (config_from_state(&s), files, s.search_ja_to_en.len())
+        (config_from_state(&s), files, s.search_ja_to_en.len(), file_errors)
     };
 
     save_config_async(config, &app_handle).await?;
@@ -107,6 +135,7 @@ pub async fn load_excel_files(
     Ok(LoadResult {
         total_entries,
         files,
+        errors: file_errors,
     })
 }
 
@@ -157,30 +186,31 @@ pub async fn reload_files(
     state: State<'_, AppStateWrapper>, 
     app_handle: AppHandle
 ) -> Result<LoadResult, String> {
-    let active_sheets = {
+    // 1. Lấy danh sách cache_key hiện có của các file này để xóa cache disk
+    let (active_sheets, cache_paths_to_delete) = {
         let s = state.0.lock().map_err(|e| e.to_string())?;
+        let mut paths = Vec::new();
         
-        // IMPORTANT: Clear DISK cache for these files to force re-parsing
         for path in &file_paths {
-             // We can't easily list all sheets without re-opening, 
-             // but we can just delete all files starting with path in cache dir
-             if let Some(cache_dir) = crate::storage::get_cache_dir(&app_handle) {
-                 if let Ok(entries) = std::fs::read_dir(cache_dir) {
-                     let prefix = path.replace('|', "_").replace(':', "_").replace('/', "_").replace('\\', "_");
-                     for entry in entries.flatten() {
-                         if let Some(name) = entry.file_name().to_str() {
-                             if name.starts_with(&prefix) {
-                                 let _ = std::fs::remove_file(entry.path());
-                             }
-                         }
-                     }
-                 }
-             }
+            if let Some(info) = s.loaded_files.get(path) {
+                // Thu thập tất cả cache_path của các sheet trong file này
+                for sheet in info.base_sheets.iter().chain(info.table_sheets.iter()) {
+                    if let Some(p) = crate::storage::get_sheet_cache_path(&app_handle, &sheet.cache_key) {
+                        paths.push(p);
+                    }
+                }
+            }
         }
         
-        s.active_table_sheets.iter().cloned().collect::<Vec<_>>()
+        (s.active_table_sheets.iter().cloned().collect::<Vec<_>>(), paths)
     };
+
+    // 2. Xóa cache ngoài lock
+    for path in cache_paths_to_delete {
+        let _ = std::fs::remove_file(path);
+    }
     
+    // 3. Thực hiện load lại (vì cache đã xóa nên sẽ buộc phải parse lại file Excel)
     load_excel_files(file_paths, active_sheets, state, app_handle).await
 }
 
@@ -346,10 +376,12 @@ pub async fn bulk_translate_v2(
             .map(|(i, _)| i)
             .collect();
         
-        // Helper to find char index from byte index
+        // Helper to find char index from byte index using binary search O(log N)
         let get_char_idx = |byte_idx: usize, offsets: &[usize]| -> u32 {
-            offsets.iter().position(|&i| i == byte_idx).unwrap_or(offsets.len()) as u32
+            offsets.binary_search(&byte_idx).unwrap_or(offsets.len()) as u32
         };
+
+        let mut output_char_count: u32 = 0;
 
         for mat in automaton.find_iter(&normalized_text) {
             let start = mat.start();
@@ -367,7 +399,9 @@ pub async fn bulk_translate_v2(
 
             if is_valid {
                 if start > last_match_end {
-                    output_text.push_str(&normalized_text[last_match_end..start]);
+                    let gap_text = &normalized_text[last_match_end..start];
+                    output_text.push_str(gap_text);
+                    output_char_count += gap_text.chars().count() as u32;
                 }
                 
                 // Input span (Convert byte index to character index)
@@ -380,11 +414,12 @@ pub async fn bulk_translate_v2(
                     match_id: match_counter,
                 });
 
-                // Output span (Convert byte index to character index)
+                // Output span (Using running character count)
                 let translated_match = &replacements[pattern_id];
-                let out_char_start = output_text.chars().count() as u32;
+                let out_char_start = output_char_count;
                 output_text.push_str(translated_match);
-                let out_char_end = output_text.chars().count() as u32;
+                output_char_count += translated_match.chars().count() as u32;
+                let out_char_end = output_char_count;
 
                 output_spans.push(MatchSpan {
                     start: out_char_start,

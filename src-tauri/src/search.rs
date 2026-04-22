@@ -1,6 +1,8 @@
 use crate::state::{AppState, DictionaryEntry};
 use serde::Serialize;
 use crate::parser::{normalize_ja, unescape};
+use std::sync::Arc;
+use rayon::prelude::*;
 
 #[derive(Serialize)]
 pub struct SearchSnippet {
@@ -31,9 +33,8 @@ pub fn search(keyword: &str, state: &AppState) -> SearchResult {
     let kw_norm = normalize_ja(&unescaped_kw);
     let kw_lower = kw_norm.to_lowercase();
     
-    let mut exact_matches = Vec::new();
-    let mut prefix_matches = Vec::new();
-    let mut substring_matches = Vec::new();
+    let mut exact_matches: Vec<Arc<DictionaryEntry>> = Vec::new();
+    let mut prefix_matches: Vec<Arc<DictionaryEntry>> = Vec::new();
     
     // Track what we added to avoid duplicates across exact/prefix/substring
     let mut seen = std::collections::HashSet::new();
@@ -102,17 +103,20 @@ pub fn search(keyword: &str, state: &AppState) -> SearchResult {
     }
 
     // 3. Substring Match
-    if kw_norm.chars().count() >= 2 {
-        for entry in state.search_ja_to_en.values() {
-            if seen.contains(&entry.ja) {
-                continue;
-            }
-            if entry.ja.contains(&kw_norm) || entry.en_lower.contains(&kw_lower) {
-                substring_matches.push(entry.clone());
-                seen.insert(entry.ja.clone());
-            }
-        }
-    }
+    let mut substring_matches: Vec<Arc<DictionaryEntry>> = if kw_norm.chars().count() >= 2 {
+        // Parallel substring search
+        state.search_ja_to_en.par_iter()
+            .filter(|(_key, entry)| {
+                // Don't check 'seen' inside parallel filter for simplicity/correctness
+                // We'll filter duplicates afterwards or just check key
+                entry.ja.contains(&kw_norm) || entry.en_lower.contains(&kw_lower)
+            })
+            .filter(|(key, _)| !seen.contains(*key))
+            .map(|(_, entry)| entry.clone())
+            .collect()
+    } else {
+        Vec::new()
+    };
     
     // Sort matches
     prefix_matches.sort_by(|a, b| a.ja.cmp(&b.ja));

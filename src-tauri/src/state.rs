@@ -50,8 +50,8 @@ pub struct SheetCache {
 use aho_corasick::AhoCorasick;
 
 pub struct AppState {
-    pub ja_to_en: HashMap<String, DictionaryEntry>,
-    pub en_to_ja: HashMap<String, DictionaryEntry>,
+    pub ja_to_en: HashMap<String, Arc<DictionaryEntry>>,
+    pub en_to_ja: HashMap<String, Arc<DictionaryEntry>>,
     pub ja_keys_sorted: Vec<String>,
     pub en_keys_sorted: Vec<String>,
     pub loaded_files: HashMap<String, FileInfo>, // path -> FileInfo
@@ -62,8 +62,8 @@ pub struct AppState {
     pub sorted_en_entries: Vec<(String, String)>, // (en, ja)
     
     // Dedicated search dictionary (all sheets from all enabled files)
-    pub search_ja_to_en: HashMap<String, DictionaryEntry>,
-    pub search_en_to_ja: HashMap<String, DictionaryEntry>,
+    pub search_ja_to_en: HashMap<String, Arc<DictionaryEntry>>,
+    pub search_en_to_ja: HashMap<String, Arc<DictionaryEntry>>,
     pub search_ja_keys_sorted: Vec<String>,
     pub search_en_keys_sorted: Vec<String>,
     
@@ -146,13 +146,14 @@ impl AppState {
             let mut en_keys = Vec::new();
 
             for entry in sheet_cache.entries {
-                if !self.ja_to_en.contains_key(&entry.ja) {
-                    ja_keys.push(entry.ja.clone());
-                    self.ja_to_en.insert(entry.ja.clone(), entry.clone());
+                let entry_arc = Arc::new(entry);
+                if !self.ja_to_en.contains_key(&entry_arc.ja) {
+                    ja_keys.push(entry_arc.ja.clone());
+                    self.ja_to_en.insert(entry_arc.ja.clone(), entry_arc.clone());
                 }
-                if !self.en_to_ja.contains_key(&entry.en_lower) {
-                    en_keys.push(entry.en_lower.clone());
-                    self.en_to_ja.insert(entry.en_lower.clone(), entry.clone());
+                if !self.en_to_ja.contains_key(&entry_arc.en_lower) {
+                    en_keys.push(entry_arc.en_lower.clone());
+                    self.en_to_ja.insert(entry_arc.en_lower.clone(), entry_arc.clone());
                 }
             }
             self.sheet_owned_ja_keys.insert(cache_key.clone(), ja_keys);
@@ -202,11 +203,12 @@ impl AppState {
 
         for (_key, sheet_cache) in all_sheets {
             for entry in sheet_cache.entries {
-                if !self.search_ja_to_en.contains_key(&entry.ja) {
-                    self.search_ja_to_en.insert(entry.ja.clone(), entry.clone());
+                let entry_arc = Arc::new(entry);
+                if !self.search_ja_to_en.contains_key(&entry_arc.ja) {
+                    self.search_ja_to_en.insert(entry_arc.ja.clone(), entry_arc.clone());
                 }
-                if !self.search_en_to_ja.contains_key(&entry.en_lower) {
-                    self.search_en_to_ja.insert(entry.en_lower.clone(), entry.clone());
+                if !self.search_en_to_ja.contains_key(&entry_arc.en_lower) {
+                    self.search_en_to_ja.insert(entry_arc.en_lower.clone(), entry_arc.clone());
                 }
             }
         }
@@ -217,10 +219,12 @@ impl AppState {
     }
 
     fn finalize_search_dictionary(&mut self) {
-        let mut ja_keys: Vec<String> = self.search_ja_to_en.keys().cloned().collect();
-        ja_keys.sort();
-        let mut en_keys: Vec<String> = self.search_en_to_ja.keys().cloned().collect();
-        en_keys.sort();
+        // Parallel key collection
+        let mut ja_keys: Vec<String> = self.search_ja_to_en.keys().par_bridge().cloned().collect();
+        ja_keys.par_sort_unstable();
+        
+        let mut en_keys: Vec<String> = self.search_en_to_ja.keys().par_bridge().cloned().collect();
+        en_keys.par_sort_unstable();
         
         self.search_ja_keys_sorted = ja_keys;
         self.search_en_keys_sorted = en_keys;
@@ -228,10 +232,12 @@ impl AppState {
 
 
     fn finalize_dictionary(&mut self) {
-        let mut ja_keys: Vec<String> = self.ja_to_en.keys().cloned().collect();
-        ja_keys.sort();
-        let mut en_keys: Vec<String> = self.en_to_ja.keys().cloned().collect();
-        en_keys.sort();
+        // Parallel key collection
+        let mut ja_keys: Vec<String> = self.ja_to_en.keys().par_bridge().cloned().collect();
+        ja_keys.par_sort_unstable();
+        
+        let mut en_keys: Vec<String> = self.en_to_ja.keys().par_bridge().cloned().collect();
+        en_keys.par_sort_unstable();
         
         self.ja_keys_sorted = ja_keys;
         self.en_keys_sorted = en_keys;

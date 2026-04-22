@@ -60,4 +60,23 @@ describe('javaCodeParser', () => {
         const pathWithPayload = res.find(p => p.conditions["includePayload"] === true);
         expect(pathWithPayload?.columns.some(c => c.en === "PAYLOAD_BLOB")).toBe(true);
     });
+
+    it('should parse chained appends correctly', () => {
+        const code = `
+            public void testChained() {
+                StringBuffer strSql = new StringBuffer();
+                strSql.append("SELECT * FROM USERS ");
+                strSql.append( " WHERE SUBSYSTEM_ID = '" ).append( mst000101_ConstDictionary.SUBSYSTEM_DIVISION ).append( "' " );
+		        strSql.append( " AND PARAMETER_ID = '" ).append( mst000101_ConstDictionary.TAIEKI_STOP_NEXT_START_TENPO_CD ).append( "' " );
+            }
+        `;
+        const res = parseJavaSQL(code);
+        expect(res.length).toBe(1);
+        expect(res[0].type).toBe("SELECT");
+        expect(res[0].tableName).toBe("USERS");
+        expect(res[0].columns.some(c => c.en === "SUBSYSTEM_ID")).toBe(true);
+        expect(res[0].columns.some(c => c.en === "PARAMETER_ID")).toBe(true);
+        // Also verify the dynamic values are captured correctly without syntax errors
+        expect(res[0].fullSql).toContain("mst000101_ConstDictionary.SUBSYSTEM_DIVISION");
+    });
 });

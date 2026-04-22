@@ -6,6 +6,8 @@ interface DetectionBannerProps {
   result: DetectionResult;
   onDismiss: () => void;
   isApplied?: boolean;
+  onToggleExclusion?: (tableName: string) => void;
+  excludedTables?: Set<string>;
 }
 
 const MethodBadge = ({ method }: { method: DetectionMethod }) => (
@@ -22,6 +24,8 @@ export const DetectionBanner: React.FC<DetectionBannerProps> = ({
   result,
   onDismiss,
   isApplied = false,
+  onToggleExclusion,
+  excludedTables = new Set(),
 }) => {
   const [isMainCollapsed, setIsMainCollapsed] = useState(isApplied);
   
@@ -37,85 +41,103 @@ export const DetectionBanner: React.FC<DetectionBannerProps> = ({
   if (matchedTables.length === 0 && unmatchedTables.length === 0) return null;
 
   return (
-    <div className={`mx-4 my-2 p-4 border rounded-lg shadow-xl animate-slide-up backdrop-blur-md transition-all duration-300 ${
+    <div className={`mx-4 my-2 p-4 border rounded-xl shadow-2xl animate-slide-up backdrop-blur-md transition-all duration-500 ${
       isApplied 
-        ? "bg-drac-success/10 border-drac-success/30 py-2" 
-        : "bg-drac-bg-tertiary/50 border-drac-accent/30"
+        ? "bg-drac-success/5 border-drac-success/20 py-3" 
+        : "bg-drac-bg-tertiary/60 border-drac-accent/30"
     }`}>
       <div className="flex items-center justify-between">
         <div 
-          className={`flex items-center gap-2 font-bold cursor-pointer hover:opacity-80 transition-opacity ${
+          className={`flex items-center gap-3 font-black cursor-pointer hover:opacity-80 transition-all active:scale-95 ${
             isApplied ? "text-drac-success" : "text-drac-accent"
           }`}
           onClick={() => setIsMainCollapsed(!isMainCollapsed)}
         >
-          {isApplied ? <CheckCircle size={18} /> : <Search size={18} className="animate-pulse" />}
-          <span className="tracking-tight">
-            {isApplied ? "Applied table selection" : "Tables detected in your text"}
-          </span>
-          {isMainCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
-          {isMainCollapsed && (
-            <span className={`text-[10px] px-2 py-0.5 rounded-full ml-2 ${
-              isApplied ? "bg-drac-success/20" : "bg-drac-accent/20"
-            }`}>
-              {matchedTables.length} tables
+          <div className={`p-1.5 rounded-lg ${isApplied ? "bg-drac-success/20" : "bg-drac-accent/20"}`}>
+            {isApplied ? <CheckCircle size={16} /> : <Search size={16} className="animate-pulse" />}
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[11px] uppercase tracking-[0.2em]">
+              {isApplied ? "Applied table selection" : "Tables detected in your text"}
             </span>
-          )}
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-mono opacity-60">
+                {matchedTables.filter(t => !excludedTables.has(t.tableName)).length} active sheets
+              </span>
+              {isMainCollapsed ? <ChevronDown size={12} className="opacity-40" /> : <ChevronUp size={12} className="opacity-40" />}
+            </div>
+          </div>
         </div>
-        <button onClick={onDismiss} className="text-drac-text-secondary hover:text-drac-text-primary transition-colors">
+        <button onClick={onDismiss} className="p-2 text-drac-text-secondary hover:text-drac-danger hover:bg-drac-danger/10 rounded-lg transition-all">
           <X size={18} />
         </button>
       </div>
 
       {!isMainCollapsed && (
-        <div className="space-y-4 mt-4 animate-fade-in">
+        <div className="space-y-6 mt-6 animate-fade-in">
           {/* MATCHED TABLES */}
           {matchedTables.length > 0 && (
-            <div className="space-y-2">
-              <div className={`text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 ${
-                isApplied ? "text-drac-success" : "text-drac-accent"
-              }`}>
+            <div className="space-y-3">
+              <div className={`text-[10px] font-black uppercase tracking-widest flex items-center gap-2 opacity-70`}>
                 <Database size={12} />
-                {isApplied ? "Active tables for this section" : "Automatically detected tables"}
+                {isApplied ? "DYNAMIC CONTEXT" : "AUTO-DETECTED LAYERS"}
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                {matchedTables.map((t) => (
-                  <div 
-                    key={t.tableName}
-                    className={`flex items-center gap-3 p-2 rounded-md border transition-colors ${
-                      isApplied 
-                        ? "bg-drac-success/5 border-drac-success/20 hover:border-drac-success/40" 
-                        : "bg-drac-bg-primary/50 border-drac-border hover:border-drac-accent/50"
-                    }`}
-                  >
-                    <div className={isApplied ? "text-drac-success" : "text-drac-accent"}>
-                      <CheckSquare size={16} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-drac-text-primary truncate">{t.tableName}</span>
-                        {!isApplied && <MethodBadge method={result.detectionMethod[t.tableName]} />}
+              <div className="flex flex-wrap gap-2">
+                {matchedTables.map((t) => {
+                  const isExcluded = excludedTables.has(t.tableName);
+                  return (
+                    <div 
+                      key={t.tableName}
+                      className={`group flex items-center gap-2 pl-3 pr-1 py-1.5 rounded-lg border transition-all duration-300 ${
+                        isExcluded
+                          ? "bg-drac-bg-secondary border-drac-border opacity-40 grayscale"
+                          : isApplied 
+                            ? "bg-drac-success/10 border-drac-success/30 hover:border-drac-success shadow-[0_2px_10px_rgba(80,250,123,0.05)]" 
+                            : "bg-drac-bg-primary/50 border-drac-border hover:border-drac-accent/50"
+                      }`}
+                    >
+                      <div className="flex flex-col min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs font-bold truncate ${isExcluded ? 'line-through text-drac-text-secondary' : 'text-drac-text-primary'}`}>
+                            {t.tableName}
+                          </span>
+                          {!isApplied && !isExcluded && <MethodBadge method={result.detectionMethod[t.tableName]} />}
+                        </div>
+                        <span className="text-[9px] font-mono text-drac-text-secondary/50">
+                          {t.entryCount.toLocaleString()} entries
+                        </span>
                       </div>
-                      <div className="text-[10px] text-drac-text-secondary opacity-60">
-                        {t.entryCount.toLocaleString()} entries
-                      </div>
+                      
+                      {onToggleExclusion && (
+                        <button 
+                          onClick={() => onToggleExclusion(t.tableName)}
+                          className={`ml-1 p-1 rounded-md transition-all ${
+                            isExcluded 
+                              ? "text-drac-accent hover:bg-drac-accent/20" 
+                              : "text-drac-text-secondary hover:text-drac-danger hover:bg-drac-danger/20"
+                          }`}
+                          title={isExcluded ? "Re-enable table" : "Deselect table"}
+                        >
+                          {isExcluded ? <CheckSquare size={14} /> : <X size={14} />}
+                        </button>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
 
           {/* UNMATCHED TABLES */}
           {unmatchedTables.length > 0 && (
-            <div className="p-3 bg-drac-warning/10 border border-drac-warning/20 rounded-md space-y-1.5">
-              <div className="text-[10px] font-bold text-drac-warning uppercase tracking-widest flex items-center gap-2">
+            <div className="p-4 bg-drac-warning/5 border border-drac-warning/10 rounded-xl space-y-2">
+              <div className="text-[10px] font-black text-drac-warning/70 uppercase tracking-widest flex items-center gap-2">
                 <AlertCircle size={12} />
-                Not found in loaded sheets
+                MISSING DICTIONARY LAYERS
               </div>
-              <div className="text-xs text-drac-warning/80 flex flex-wrap gap-x-2">
+              <div className="text-[11px] text-drac-warning/60 font-mono flex flex-wrap gap-x-3">
                 {unmatchedTables.map((name, i) => (
-                  <span key={name} className="font-mono">{name}{i < unmatchedTables.length - 1 ? "," : ""}</span>
+                  <span key={name}>{name}{i < unmatchedTables.length - 1 ? "," : ""}</span>
                 ))}
               </div>
             </div>

@@ -150,47 +150,152 @@ function findClosingBrace(text: string, openPos: number): number {
   return -1;
 }
 
+function findClosingParen(text: string, openPos: number): number {
+  let count = 0;
+  let inString = false;
+  let escape = false;
+
+  for (let i = openPos; i < text.length; i++) {
+    const char = text[i];
+    
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    
+    if (char === '\\') {
+      escape = true;
+      continue;
+    }
+    
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    
+    if (!inString) {
+      if (char === '(') count++;
+      else if (char === ')') {
+        count--;
+        if (count === 0) return i;
+      }
+    }
+  }
+  return -1;
+}
+
 /**
- * Extract appends, handling string concatenation.
- * e.g. .append("ID = '" + var + "'") -> ID = '__DYNAMIC__'
+ * Extract appends, handling string concatenation and chained appends.
+ * e.g. .append("ID = '" + var + "'").append(" AND X = 1")
  */
 function extractAppends(code: string): ColumnAppend[] {
   const appends: ColumnAppend[] = [];
-  // Match: var.append( ... )
-  // We look specifically for the content inside parens
-  const regex = /([\w\d_]+)\.append\s*\(\s*([\s\S]*?)\s*\)\s*;/g;
+  let currentVarName = "UNKNOWN";
+  
+  const appendRegex = /(?:([\w\d_]+)\s*)?\.append\s*\(/g;
   let match;
-  while ((match = regex.exec(code)) !== null) {
-    const varName = match[1];
-    const rawContent = match[2];
-    
-    // Process content to extract string literals and replace dynamic parts
-    const { content, isDynamic } = resolveJavaContent(rawContent);
-    
-    appends.push({
-      variable: varName,
-      content,
-      isDynamic
-    });
+  
+  while ((match = appendRegex.exec(code)) !== null) {
+      if (match[1]) {
+          currentVarName = match[1];
+      }
+      
+      const openPos = match.index + match[0].length - 1; // position of '('
+      const closePos = findClosingParen(code, openPos);
+      
+      if (closePos !== -1) {
+          const rawContent = code.substring(openPos + 1, closePos);
+          const { content, isDynamic } = resolveJavaContent(rawContent);
+          appends.push({ variable: currentVarName, content, isDynamic });
+          
+          appendRegex.lastIndex = closePos;
+      }
   }
   return appends;
 }
 
 function resolveJavaContent(raw: string): { content: string, isDynamic: boolean } {
-  // Simple heuristic for Java string concatenation
-  // "STR" + VAR + "STR"
-  const parts = raw.split(/\s*\+\s*/);
-  let isDynamic = false;
   let result = "";
-
-  for (const part of parts) {
-    const literalMatch = part.match(/"([^"]*)"/);
-    if (literalMatch) {
-      result += literalMatch[1];
+  let isDynamic = false;
+  
+  let i = 0;
+  while (i < raw.length) {
+    const char = raw[i];
+    
+    // Skip whitespace and standalone '+' outside strings
+    if (/\s/.test(char) || char === '+') {
+      i++;
+      continue;
+    }
+    
+    if (char === '"') {
+      let str = "";
+      i++;
+      let escape = false;
+      while (i < raw.length) {
+        if (escape) {
+          str += raw[i];
+          escape = false;
+        } else if (raw[i] === '\\') {
+          escape = true;
+        } else if (raw[i] === '"') {
+          i++;
+          break;
+        } else {
+          str += raw[i];
+        }
+        i++;
+      }
+      result += str;
     } else {
-      isDynamic = true;
-      // Mark as variable temporarily
-      result += `__VAR_START__${part.trim()}__VAR_END__`;
+      let expr = "";
+      let parenCount = 0;
+      let inExprString = false;
+      let exprEscape = false;
+      
+      while (i < raw.length) {
+        const c = raw[i];
+        
+        if (exprEscape) {
+            expr += c;
+            exprEscape = false;
+            i++;
+            continue;
+        }
+        if (c === '\\') {
+            exprEscape = true;
+            expr += c;
+            i++;
+            continue;
+        }
+        
+        if (c === '"') {
+            inExprString = !inExprString;
+        }
+        
+        if (!inExprString) {
+            if (c === '(') parenCount++;
+            if (c === ')') parenCount--;
+            
+            // Break on top-level '+' or double-quote that starts a new string
+            if (parenCount === 0 && (c === '+' || c === '"')) {
+               if (c === '+') {
+                   i++; // Consume the '+'
+               }
+               // Do not consume '"', let the outer loop handle it
+               break; 
+            }
+        }
+        
+        expr += c;
+        i++;
+      }
+      
+      const trimmed = expr.trim();
+      if (trimmed) {
+        isDynamic = true;
+        result += `__VAR_START__${trimmed}__VAR_END__`;
+      }
     }
   }
 
@@ -271,7 +376,7 @@ function generatePaths(segments: Segment[], variables: string[], pattern: "singl
  * STRATEGY: Single Buffer Sequential Extraction
  */
 function processSingleBuffer(appends: ColumnAppend[]): Partial<PathResult> {
-  const sql = appends.map(a => a.content).join(" ");
+  const sql = appends.map(a => a.content).join("");
   
   // 2. Structural Parsing
   const typeMatch = sql.match(/^\s*(UPDATE|SELECT|INSERT|DELETE|MERGE)/i);
@@ -325,6 +430,13 @@ function processSingleBuffer(appends: ColumnAppend[]): Partial<PathResult> {
         isPlaceholder: false,
         category: "WHERE"
       });
+  }
+
+  // Set primary table name for SELECT/DELETE if found
+  if (type === "SELECT" || type === "DELETE") {
+    if (tables.length > 0) {
+      tableName = tables[0].name;
+    }
   }
 
   return {

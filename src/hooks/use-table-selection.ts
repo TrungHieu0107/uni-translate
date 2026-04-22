@@ -35,6 +35,8 @@ export function useTableSelection(files: FileInfo[]) {
     return localStorage.getItem("table_selector_collapsed") === "true";
   });
   const [isApplying, setIsApplying] = useState(false);
+  const [isApplyingManual, setIsApplyingManual] = useState(false);
+  const manualChangePending = useRef(false);
 
   useEffect(() => {
     localStorage.setItem("table_selector_collapsed", String(isCollapsed));
@@ -67,12 +69,14 @@ export function useTableSelection(files: FileInfo[]) {
   }, [pathsKey]);
 
   const toggleSheet = useCallback((cacheKey: string) => {
+    manualChangePending.current = true;
     setManualSelectedSheets(prev => 
       prev.includes(cacheKey) ? prev.filter(k => k !== cacheKey) : [...prev, cacheKey]
     );
   }, []);
 
   const toggleAllVisible = useCallback((visibleKeys: string[], shouldSelect: boolean) => {
+    manualChangePending.current = true;
     setManualSelectedSheets(prev => {
       const otherKeys = prev.filter(k => !visibleKeys.includes(k));
       return shouldSelect ? [...otherKeys, ...visibleKeys] : otherKeys;
@@ -117,15 +121,37 @@ export function useTableSelection(files: FileInfo[]) {
       return next;
     });
   }, [knownSheets]);
+
+  const forceRemoveSelection = useCallback(async (sheetNames: string[]) => {
+    const cacheKeys = sheetNames.map(name => {
+      const found = knownSheets.find(s => s.name === name);
+      return found?.cache_key;
+    }).filter(Boolean) as string[];
+
+    if (cacheKeys.length === 0) return;
+
+    setManualSelectedSheets(prev => prev.filter(k => !cacheKeys.includes(k)));
+    
+    setAutoSelectionCounts(prev => {
+      const next = new Map(prev);
+      cacheKeys.forEach(key => next.delete(key));
+      return next;
+    });
+  }, [knownSheets]);
+
   const applySelection = useCallback(async (currentSelection: string[]) => {
+    const isManual = manualChangePending.current;
     try {
       setIsApplying(true);
+      if (isManual) setIsApplyingManual(true);
       await updateTableSelection(currentSelection);
     } catch (err: any) {
       console.error("Failed to apply selection", err);
       setError(err.toString());
     } finally {
       setIsApplying(false);
+      if (isManual) setIsApplyingManual(false);
+      manualChangePending.current = false;
     }
   }, [updateTableSelection]);
 
@@ -164,6 +190,7 @@ export function useTableSelection(files: FileInfo[]) {
     if (files.length === 0) return;
     try {
       setIsApplying(true);
+      setIsApplyingManual(true);
       const paths = files.map(f => f.path);
       const scan = await scanExcelSheets(paths);
       setScanResult(scan);
@@ -175,20 +202,24 @@ export function useTableSelection(files: FileInfo[]) {
       setError(err.toString());
     } finally {
       setIsApplying(false);
+      setIsApplyingManual(false);
     }
   }, [files, scanExcelSheets, getActiveSheets]);
 
   return {
     scanResult,
     selectedSheets,
+    manualSelectedSheets,
     isCollapsed,
     setIsCollapsed,
     isApplying: isApplying || isDictionaryLoading,
+    isApplyingManual,
     toggleSheet,
     toggleAllVisible,
     refreshScan,
     addAutoSelection,
     removeAutoSelection,
+    forceRemoveSelection,
     setManualSelectedSheets,
     error,
     clearError

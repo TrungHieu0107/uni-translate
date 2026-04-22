@@ -216,6 +216,12 @@ export function SQLVisualizerTab() {
               ) : (
                 <VisualizerOutput content={outputText} />
               )}
+
+              {copied && (
+                <div className="absolute top-4 right-4 bg-drac-success text-drac-bg-primary text-[10px] font-black px-3 py-1 rounded shadow-lg animate-bounce-in z-50 tracking-widest uppercase">
+                  {copied === "md" ? "Markdown Copied" : "Text Copied"}
+                </div>
+              )}
             </div>
           </div>
         </div>

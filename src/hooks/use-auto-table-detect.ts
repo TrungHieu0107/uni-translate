@@ -13,37 +13,71 @@ export function useAutoTableDetect(
   onSelectionRemove: (sheetNames: string[]) => Promise<void>,
 ) {
   const [detectionResult, setDetectionResult] = useState<DetectionResult | null>(null);
+  const [excludedTables, setExcludedTables] = useState<Set<string>>(new Set());
   const lastAppliedRef = useRef<string[]>([]);
   
+  const debounceTimerRef = useRef<number | null>(null);
+
   const handleInput = useCallback(async (text: string) => {
-    const result = detectTableNames(text, knownSheets, activeSelection);
-    
-    // Find what's actually new in this specific input
-    const matchedNames = result.matched.map(t => t.tableName);
-    
-    // 1. Identify tables that are no longer in this text (to be removed)
-    const toRemove = lastAppliedRef.current.filter(name => !matchedNames.includes(name));
-    if (toRemove.length > 0) {
-      await onSelectionRemove(toRemove);
+    if (debounceTimerRef.current) {
+      window.clearTimeout(debounceTimerRef.current);
     }
 
-    // 2. Identify tables that are newly found in this text (to be added)
-    // Note: detectTableNames already filtered against activeSelection, 
-    // but we also filter against what we already applied in this session
-    const toAdd = matchedNames.filter(name => !lastAppliedRef.current.includes(name));
-    if (toAdd.length > 0) {
-      await onSelectionAdd(toAdd);
-    }
+    debounceTimerRef.current = window.setTimeout(async () => {
+      const result = detectTableNames(text, knownSheets, activeSelection);
+      
+      // Find what's actually new in this specific input
+      const matchedNames = result.matched.map(t => t.tableName);
+      
+      // 1. Identify tables that are no longer in this text (to be removed)
+      const toRemove = lastAppliedRef.current.filter(name => !matchedNames.includes(name));
+      if (toRemove.length > 0) {
+        await onSelectionRemove(toRemove);
+      }
 
-    lastAppliedRef.current = matchedNames;
+      // 2. Identify tables that are newly found in this text (to be added)
+      // Respect user exclusion: don't add if user manually removed it
+      const toAdd = matchedNames.filter(name => 
+        !lastAppliedRef.current.includes(name) && !excludedTables.has(name)
+      );
+      
+      if (toAdd.length > 0) {
+        await onSelectionAdd(toAdd);
+      }
 
-    // Show banner only if we have active matches or unmatched warnings
-    if (result.matched.length > 0 || result.unmatched.length > 0) {
-      setDetectionResult(result);
+      lastAppliedRef.current = matchedNames;
+
+      // Show banner only if we have active matches or unmatched warnings
+      if (result.matched.length > 0 || result.unmatched.length > 0) {
+        setDetectionResult(result);
+      } else {
+        setDetectionResult(null);
+      }
+      debounceTimerRef.current = null;
+    }, 300);
+  }, [knownSheets, activeSelection, onSelectionAdd, onSelectionRemove, excludedTables]);
+
+  const toggleExclusion = useCallback(async (tableName: string) => {
+    const isExcluded = excludedTables.has(tableName);
+    
+    if (isExcluded) {
+      setExcludedTables(prev => {
+        const next = new Set(prev);
+        next.delete(tableName);
+        return next;
+      });
+      // Re-add to auto selection when un-excluding
+      await onSelectionAdd([tableName]);
     } else {
-      setDetectionResult(null);
+      setExcludedTables(prev => {
+        const next = new Set(prev);
+        next.add(tableName);
+        return next;
+      });
+      // Remove from active selection immediately when excluding
+      await onSelectionRemove([tableName]);
     }
-  }, [knownSheets, activeSelection, onSelectionAdd, onSelectionRemove]);
+  }, [excludedTables, onSelectionAdd, onSelectionRemove]);
 
   const dismissBanner = useCallback(() => {
     setDetectionResult(null);
@@ -62,5 +96,7 @@ export function useAutoTableDetect(
     detectionResult,
     handleInput,
     dismissBanner,
+    toggleExclusion,
+    excludedTables,
   };
 }
