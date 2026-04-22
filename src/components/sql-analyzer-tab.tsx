@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { Play, Code2, Layers, AlertTriangle, Info, Terminal, Search } from "lucide-react";
 import { parseJavaSQL, PathResult, parseJavaSegments, extractConditionVariables } from "../lib/java-code-parser";
 import { PathCard } from "./path-card";
@@ -89,8 +90,14 @@ export function SQLAnalyzerTab() {
 
       <div className="flex-1 flex gap-6 p-6 overflow-hidden">
         {/* Left Side: Code Input */}
-        <div className="w-1/2 flex flex-col gap-4">
+        <motion.div 
+          className="w-1/2 flex flex-col gap-4"
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.4 }}
+        >
           <CodeContainer 
+            className="flex-1"
             title="Java Source Snippet"
             icon={<Terminal size={12} />}
             actions={javaCode && (
@@ -116,7 +123,11 @@ if (AllRefrectFg) {
           </CodeContainer>
           
           {variables.length > 0 && (
-            <div className="bg-drac-bg-secondary/50 border border-drac-border rounded-lg p-3">
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-drac-bg-secondary/50 border border-drac-border rounded-lg p-3"
+            >
               <div className="flex items-center gap-2 mb-2 text-drac-text-secondary">
                 <Info size={14} />
                 <span className="text-[10px] font-bold uppercase tracking-widest">Detected Conditions</span>
@@ -128,12 +139,17 @@ if (AllRefrectFg) {
                   </Badge>
                 ))}
               </div>
-            </div>
+            </motion.div>
           )}
-        </div>
+        </motion.div>
 
         {/* Right Side: Results */}
-        <div className="w-1/2 flex flex-col gap-4">
+        <motion.div 
+          className="w-1/2 flex flex-col gap-4"
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.4, delay: 0.1 }}
+        >
           {paths.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center text-drac-text-secondary border-2 border-dashed border-drac-border rounded-xl opacity-50 bg-drac-bg-secondary/10">
               <Search size={48} className="mb-4 opacity-20" />
@@ -155,17 +171,25 @@ if (AllRefrectFg) {
               </div>
               
               <div className="flex-1 overflow-y-auto scrollbar-dracula p-4 flex flex-col gap-4 bg-drac-bg-primary/30">
-                {paths.map((path, idx) => (
-                  <PathCard 
-                    key={idx} 
-                    path={path} 
-                    translations={translations}
-                  />
-                ))}
+                <AnimatePresence mode="popLayout">
+                  {paths.map((path, idx) => (
+                    <motion.div
+                      key={idx}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: idx * 0.05 }}
+                    >
+                      <PathCard 
+                        path={path} 
+                        translations={translations}
+                      />
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
               </div>
             </div>
           )}
-        </div>
+        </motion.div>
         
         <LoadingOverlay 
           isVisible={isAnalyzing} 
