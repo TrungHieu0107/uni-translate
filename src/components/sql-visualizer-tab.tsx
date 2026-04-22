@@ -4,6 +4,9 @@ import { parseToIR, renderIR, IRNode } from "../lib/sql-condition-visualizer";
 import { SnippetFile, SnippetMatcher } from "../lib/snippet-matcher";
 import { VisualizerOutput } from "./visualizer-output";
 import { SnippetPanel } from "./snippet-panel";
+import { PageHeader } from "./ui/page-header";
+import { Button } from "./ui/button";
+import { Badge } from "./ui/badge";
 
 export function SQLVisualizerTab() {
   const [inputCode, setInputCode] = useState(() => localStorage.getItem("visualizer_inputCode") || "");
@@ -11,7 +14,6 @@ export function SQLVisualizerTab() {
   const [nodes, setNodes] = useState<IRNode[]>([]);
   const [unmatched, setUnmatched] = useState<string[]>([]);
   
-  // Snippet State
   const [snippetFile, setSnippetFile] = useState<SnippetFile>(() => {
     const saved = localStorage.getItem("visualizer_snippetFile");
     return saved ? JSON.parse(saved) : { exact: {}, patterns: [] };
@@ -22,7 +24,6 @@ export function SQLVisualizerTab() {
 
   const matcher = useMemo(() => new SnippetMatcher(snippetFile), [snippetFile]);
 
-  // Sync to localStorage
   useEffect(() => {
     localStorage.setItem("visualizer_inputCode", inputCode);
   }, [inputCode]);
@@ -35,7 +36,6 @@ export function SQLVisualizerTab() {
   const [isVisualizing, setIsVisualizing] = useState(false);
   const [outputText, setOutputText] = useState("");
 
-  // Debounced parsing and rendering
   useEffect(() => {
     if (!inputCode.trim()) {
       setOutputText("");
@@ -73,11 +73,10 @@ export function SQLVisualizerTab() {
   }, [nodes]);
 
   const handleCopy = (type: "text" | "md") => {
-    // Strip internal markers used for UI styling
     let content = outputText
       .replace(/\[E\]/g, "")
-      .replace(/\[P\]~/g, "") // Strip pattern marker and the prefix ~
-      .replace(/\[F\]/g, ""); // Strip fallback marker
+      .replace(/\[P\]~/g, "")
+      .replace(/\[F\]/g, "");
 
     if (type === "md") {
       content = "```sql\n" + content + "\n```";
@@ -105,31 +104,24 @@ export function SQLVisualizerTab() {
 
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-drac-bg-primary overflow-hidden">
-      {/* Header */}
-      <div className="p-6 pb-2 border-b border-drac-border bg-drac-bg-secondary/30 flex justify-between items-end shrink-0">
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-2 text-amber-400">
-            <FileText size={24} />
-            <h1 className="text-xl font-bold tracking-tight">SQL Condition Visualizer</h1>
-          </div>
-          <p className="text-xs text-drac-text-secondary">
-            Visualize complex SQL construction logic with inline condition blocks.
-          </p>
-        </div>
-        
-        <div className="flex gap-2">
-          <button 
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold bg-drac-bg-tertiary border border-drac-border text-drac-text-secondary hover:text-drac-danger hover:border-drac-danger transition-all active:scale-95"
+      <PageHeader 
+        title="SQL Condition Visualizer"
+        icon={<FileText size={24} className="text-amber-400" />}
+        actions={
+          <Button 
+            variant="ghost" 
+            size="sm"
             onClick={clear}
+            leftIcon={<Trash2 size={14} />}
+            className="text-drac-text-secondary hover:text-drac-danger hover:bg-drac-danger/10"
           >
-            <Trash2 size={14} />
             CLEAR
-          </button>
-        </div>
-      </div>
+          </Button>
+        }
+        description="Visualize complex SQL construction logic with inline condition blocks."
+      />
 
-      <div className="flex-1 flex flex-col p-6 min-h-0 overflow-y-auto scrollbar-dracula">
-        {/* Snippet Panel */}
+      <div className="flex-1 flex flex-col p-6 pt-2 min-h-0 overflow-y-auto scrollbar-dracula">
         <SnippetPanel 
           snippetFile={snippetFile}
           fileName={snippetFileName}
@@ -141,16 +133,15 @@ export function SQLVisualizerTab() {
           onUpdate={setSnippetFile}
         />
 
-        {/* Dual Pane View */}
-        <div className="flex-1 flex gap-4 min-h-[500px]">
+        <div className="flex-1 flex gap-6 min-h-[500px] mt-4">
           {/* Input Pane */}
-          <div className="flex-1 flex flex-col bg-drac-bg-secondary rounded-xl border border-drac-border overflow-hidden shadow-lg group focus-within:border-amber-400/50 transition-colors">
-            <div className="px-4 py-1.5 bg-drac-bg-tertiary/50 border-b border-drac-border flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-drac-danger" />
-              <span className="text-[10px] font-bold uppercase tracking-widest text-drac-text-secondary">Java Code Input</span>
+          <div className="flex-1 flex flex-col bg-drac-bg-secondary rounded-xl border border-drac-border overflow-hidden shadow-lg group focus-within:border-amber-400/50 transition-all">
+            <div className="px-4 py-2 bg-drac-bg-tertiary/50 border-b border-drac-border flex items-center gap-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-drac-danger" />
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-drac-text-secondary">Java Logic Source</span>
             </div>
             <textarea 
-              className="flex-1 p-4 bg-transparent outline-none resize-none font-mono text-xs leading-relaxed scrollbar-dracula"
+              className="flex-1 p-5 bg-transparent outline-none resize-none font-mono text-xs leading-relaxed scrollbar-dracula text-drac-text-primary"
               placeholder='sql.append("SELECT * FROM PRODUCT ");&#10;if(code != null) {&#10;  sql.append("WHERE CD = " + code);&#10;}'
               value={inputCode}
               onChange={(e) => setInputCode(e.target.value)}
@@ -158,90 +149,96 @@ export function SQLVisualizerTab() {
             />
           </div>
 
-          {/* Icon Gap */}
           <div className="flex items-center justify-center">
-            <div className="w-10 h-10 rounded-full bg-drac-bg-secondary border border-drac-border flex items-center justify-center text-amber-400 shadow-lg animate-bounce-x">
-              <Send size={18} />
+            <div className="w-12 h-12 rounded-full bg-drac-bg-secondary border border-drac-border flex items-center justify-center text-amber-400 shadow-xl animate-pulse ring-4 ring-amber-400/10">
+              <Send size={20} />
             </div>
           </div>
 
           {/* Output Pane */}
-          <div className="flex-1 flex flex-col bg-drac-bg-secondary rounded-xl border border-drac-border overflow-hidden shadow-lg relative">
-            <div className="px-4 py-1.5 bg-drac-bg-tertiary/50 border-b border-drac-border flex items-center justify-between">
+          <div className="flex-1 flex flex-col bg-drac-bg-secondary rounded-xl border border-drac-border overflow-hidden shadow-lg relative group/output">
+            <div className="px-4 py-2 bg-drac-bg-tertiary/50 border-b border-drac-border flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-drac-success" />
-                <span className="text-[10px] font-bold uppercase tracking-widest text-drac-text-secondary">
-                  SQL Document Output
+                <div className="w-1.5 h-1.5 rounded-full bg-drac-success" />
+                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-drac-text-secondary">
+                  SQL Documentation
                 </span>
               </div>
               
               <div className="flex gap-2">
-                <button 
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded text-[10px] font-bold transition-all active:scale-95 ${
-                    copied === "text" ? "text-drac-success bg-drac-success/10" : "text-amber-400 hover:bg-drac-bg-primary"
-                  }`}
+                <Button 
+                  variant={copied === "text" ? "success" : "ghost"}
+                  size="xs"
                   onClick={() => handleCopy("text")}
                   disabled={!outputText}
+                  leftIcon={copied === "text" ? <Check size={12} /> : <Copy size={12} />}
+                  className="text-[10px]"
                 >
-                  {copied === "text" ? <Check size={12} /> : <Copy size={12} />}
                   {copied === "text" ? "COPIED" : "COPY TEXT"}
-                </button>
-                <button 
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded text-[10px] font-bold transition-all active:scale-95 ${
-                    copied === "md" ? "text-drac-success bg-drac-success/10" : "text-drac-purple hover:bg-drac-bg-primary"
-                  }`}
+                </Button>
+                <Button 
+                  variant={copied === "md" ? "success" : "ghost"}
+                  size="xs"
                   onClick={() => handleCopy("md")}
                   disabled={!outputText}
+                  leftIcon={<Code size={12} />}
+                  className="text-[10px]"
                 >
-                  <Code size={12} />
                   {copied === "md" ? "COPIED" : "COPY MD"}
-                </button>
+                </Button>
               </div>
             </div>
 
             <div className="flex-1 flex flex-col min-h-0 overflow-hidden relative">
               {isVisualizing && (
-                <div className="absolute inset-0 bg-drac-bg-primary/50 backdrop-blur-[1px] z-10 flex items-center justify-center animate-fade-in">
-                  <div className="flex flex-col items-center gap-2">
-                    <Loader2 className="text-amber-400 animate-spin" size={24} />
-                    <span className="text-[10px] font-bold text-amber-400 tracking-widest animate-pulse">VISUALIZING...</span>
+                <div className="absolute inset-0 bg-drac-bg-primary/50 backdrop-blur-sm z-10 flex items-center justify-center animate-fade-in">
+                  <div className="flex flex-col items-center gap-3">
+                    <Loader2 className="text-amber-400 animate-spin" size={32} />
+                    <span className="text-[10px] font-black text-amber-400 tracking-[0.4em] animate-pulse uppercase">Visualizing Matrix</span>
                   </div>
                 </div>
               )}
               {!outputText && !inputCode.trim() ? (
-                <div className="flex-1 flex flex-col items-center justify-center text-drac-text-secondary opacity-30 italic p-6 text-center">
-                  <FileText size={48} className="mb-4" />
-                  <p className="text-sm">Enter Java code on the left to visualize conditions</p>
+                <div className="flex-1 flex flex-col items-center justify-center text-drac-text-secondary opacity-30 italic p-10 text-center">
+                  <FileText size={48} className="mb-6 opacity-20" />
+                  <p className="text-sm font-medium tracking-wide">Enter Java logic to generate documentation</p>
                 </div>
               ) : (
                 <VisualizerOutput content={outputText} />
               )}
 
               {copied && (
-                <div className="absolute top-4 right-4 bg-drac-success text-drac-bg-primary text-[10px] font-black px-3 py-1 rounded shadow-lg animate-bounce-in z-50 tracking-widest uppercase">
-                  {copied === "md" ? "Markdown Copied" : "Text Copied"}
+                <div className="absolute top-4 right-4 bg-drac-success text-drac-bg-primary text-[10px] font-black px-4 py-1.5 rounded shadow-lg animate-bounce-in z-50 tracking-widest uppercase">
+                  {copied === "md" ? "Markdown Sync Complete" : "Clipboard Updated"}
                 </div>
               )}
             </div>
           </div>
         </div>
 
-        {/* Legend */}
+        {/* Interactive Legend */}
         {groupIds.length > 0 && (
-          <div className="mt-4 p-4 bg-drac-bg-secondary rounded-xl border border-drac-border flex items-center gap-4 animate-slide-up shrink-0">
-            <span className="text-[10px] font-bold text-drac-text-secondary uppercase tracking-wider">Condition Groups detected:</span>
-            <div className="flex gap-2">
+          <div className="mt-6 p-5 bg-drac-bg-secondary rounded-2xl border border-drac-border flex items-center gap-6 animate-slide-up shrink-0 shadow-lg">
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[10px] font-black text-drac-text-secondary uppercase tracking-[0.2em]">Logical Groups</span>
+              <span className="text-[9px] text-drac-text-secondary/50 italic">Quick navigation matrix</span>
+            </div>
+            
+            <div className="flex gap-2.5">
               {groupIds.map(id => (
                 <button
                   key={id}
                   onClick={() => jumpToGroup(id)}
-                  className="w-8 h-8 rounded-lg bg-drac-bg-tertiary border border-drac-border text-amber-400 font-bold text-xs flex items-center justify-center hover:bg-amber-400 hover:text-drac-bg-secondary transition-all"
+                  className="w-9 h-9 rounded-xl bg-drac-bg-tertiary border border-drac-border text-amber-400 font-black text-sm flex items-center justify-center hover:bg-amber-400 hover:text-drac-bg-primary hover:scale-110 transition-all shadow-md"
                 >
                   {id}
                 </button>
               ))}
             </div>
-            <span className="text-[10px] text-drac-text-secondary italic ml-auto">Click a group to jump to its location in the output</span>
+            
+            <Badge variant="ghost" className="ml-auto text-[9px] opacity-60">
+              Interactive Documentation v2.0
+            </Badge>
           </div>
         )}
       </div>

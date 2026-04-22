@@ -1,9 +1,14 @@
 import { useState, useEffect } from "react";
-import { Play, Code2, Layers, AlertTriangle, Info, Terminal, Search, Loader2 } from "lucide-react";
+import { Play, Code2, Layers, AlertTriangle, Info, Terminal, Search } from "lucide-react";
 import { parseJavaSQL, PathResult, parseJavaSegments, extractConditionVariables } from "../lib/java-code-parser";
 import { PathCard } from "./path-card";
 import { useDictionary, DictionaryEntry } from "../hooks/use-dictionary";
 import { formatError } from "../lib/errors";
+import { Button } from "./ui/button";
+import { PageHeader } from "./ui/page-header";
+import { CodeContainer } from "./ui/code-container";
+import { LoadingOverlay } from "./ui/loading-overlay";
+import { Badge } from "./ui/badge";
 
 export function SQLAnalyzerTab() {
   const { search, isLoading: isDictLoading } = useDictionary();
@@ -31,7 +36,6 @@ export function SQLAnalyzerTab() {
     try {
       setIsAnalyzing(true);
       
-      // 1. Analyze Java Code
       const segments = parseJavaSegments(javaCode);
       const detectedVars = extractConditionVariables(segments);
       setVariables(detectedVars);
@@ -39,14 +43,12 @@ export function SQLAnalyzerTab() {
       const generatedPaths = parseJavaSQL(javaCode);
       setPaths(generatedPaths);
 
-      // 2. Batch translation lookup for all unique columns
       const allCols = new Set<string>();
       generatedPaths.forEach(p => p.columns.forEach(c => allCols.add(c.en)));
       
       const colArray = Array.from(allCols);
       const newTranslations: Record<string, DictionaryEntry | null> = {};
       
-      // Perform parallel lookups
       await Promise.all(colArray.map(async (col) => {
         const res = await search(col);
         if (res && res.exact && res.exact.length > 0) {
@@ -67,52 +69,41 @@ export function SQLAnalyzerTab() {
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-drac-bg-primary overflow-hidden">
-      {/* Header Area */}
-      <div className="p-6 pb-2 border-b border-drac-border flex justify-between items-end bg-drac-bg-secondary/30">
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-2 text-drac-accent">
-            <Code2 size={24} />
-            <h1 className="text-xl font-bold tracking-tight">Java SQL Code Analyzer</h1>
-          </div>
-          <p className="text-xs text-drac-text-secondary">
-            Paste Java method body with <code className="text-drac-text-accent">StringBuffer.append()</code> to extract column mappings.
-          </p>
-        </div>
-        <button 
-          className="flex items-center gap-2 bg-drac-accent text-drac-bg-secondary px-6 py-2.5 rounded-lg font-bold shadow-lg hover:bg-drac-accent-hover active:scale-95 transition-all disabled:opacity-50"
-          onClick={handleAnalyze}
-          disabled={isAnalyzing || !javaCode.trim() || isDictLoading}
-        >
-          {isAnalyzing ? (
-            <Layers className="animate-spin" size={18} />
-          ) : (
-            <Play size={18} fill="currentColor" />
-          )}
-          {isAnalyzing ? "ANALYZING..." : "ANALYZE CODE"}
-        </button>
-      </div>
+    <div className="flex-1 flex flex-col min-h-0 bg-drac-bg-primary overflow-hidden relative">
+      <PageHeader 
+        title="Java SQL Code Analyzer"
+        description="Paste Java method body with StringBuffer.append() to extract column mappings."
+        icon={<Code2 size={24} />}
+        actions={
+          <Button 
+            variant="accent"
+            size="lg"
+            onClick={handleAnalyze}
+            disabled={isAnalyzing || !javaCode.trim() || isDictLoading}
+            leftIcon={isAnalyzing ? <Layers className="animate-spin" size={18} /> : <Play size={18} fill="currentColor" />}
+          >
+            {isAnalyzing ? "ANALYZING..." : "ANALYZE CODE"}
+          </Button>
+        }
+      />
 
       <div className="flex-1 flex gap-6 p-6 overflow-hidden">
         {/* Left Side: Code Input */}
         <div className="w-1/2 flex flex-col gap-4">
-          <div className="flex-1 flex flex-col bg-drac-bg-secondary rounded-xl border border-drac-border overflow-hidden shadow-inner group focus-within:border-drac-accent/50 transition-colors">
-            <div className="px-4 py-2 bg-drac-bg-tertiary/50 border-b border-drac-border flex items-center justify-between">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-drac-text-secondary flex items-center gap-2">
-                <Terminal size={12} />
-                Java Source Snippet
-              </span>
-              {javaCode && (
-                <button 
-                  className="text-[10px] text-drac-danger hover:underline"
-                  onClick={() => setJavaCode("")}
-                >
-                  Clear
-                </button>
-              )}
-            </div>
+          <CodeContainer 
+            title="Java Source Snippet"
+            icon={<Terminal size={12} />}
+            actions={javaCode && (
+              <button 
+                className="text-[10px] text-drac-danger hover:underline font-bold uppercase tracking-widest"
+                onClick={() => setJavaCode("")}
+              >
+                Clear
+              </button>
+            )}
+          >
             <textarea 
-              className="flex-1 p-4 bg-transparent outline-none resize-none font-mono text-xs leading-relaxed scrollbar-dracula"
+              className="flex-1 p-4 bg-transparent outline-none resize-none font-mono text-xs leading-relaxed scrollbar-dracula text-drac-text-primary"
               placeholder={`Example:
 sql.append("UKETSUKE_NO,");
 if (AllRefrectFg) {
@@ -122,7 +113,7 @@ if (AllRefrectFg) {
               onChange={(e) => setJavaCode(e.target.value)}
               spellCheck={false}
             />
-          </div>
+          </CodeContainer>
           
           {variables.length > 0 && (
             <div className="bg-drac-bg-secondary/50 border border-drac-border rounded-lg p-3">
@@ -132,9 +123,9 @@ if (AllRefrectFg) {
               </div>
               <div className="flex flex-wrap gap-2">
                 {variables.map(v => (
-                  <span key={v} className="px-2 py-0.5 rounded bg-drac-bg-tertiary border border-drac-border text-[10px] text-drac-accent font-mono">
+                  <Badge key={v} variant="accent" className="font-mono">
                     {v}
-                  </span>
+                  </Badge>
                 ))}
               </div>
             </div>
@@ -146,7 +137,7 @@ if (AllRefrectFg) {
           {paths.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center text-drac-text-secondary border-2 border-dashed border-drac-border rounded-xl opacity-50 bg-drac-bg-secondary/10">
               <Search size={48} className="mb-4 opacity-20" />
-              <p className="text-sm font-medium">No analysis data yet</p>
+              <p className="text-sm font-medium text-drac-text-primary">No analysis data yet</p>
               <p className="text-[10px]">Paths and Column mappings will appear here after analysis</p>
             </div>
           ) : (
@@ -156,10 +147,10 @@ if (AllRefrectFg) {
                   Found {paths.length} unique execution paths
                 </span>
                 {Object.values(translations).some(t => t === null) && (
-                  <div className="flex items-center gap-1 text-[10px] text-amber-500 font-bold bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
+                  <Badge variant="danger" className="gap-1">
                     <AlertTriangle size={12} />
                     MISSING MAPPINGS
-                  </div>
+                  </Badge>
                 )}
               </div>
               
@@ -176,21 +167,11 @@ if (AllRefrectFg) {
           )}
         </div>
         
-        {/* Analyzing Overlay */}
-        {isAnalyzing && (
-          <div className="absolute inset-0 bg-drac-bg-secondary/10 backdrop-blur-[4px] z-[60] flex items-center justify-center animate-fade-in pointer-events-none">
-            <div className="bg-drac-bg-primary/70 p-8 rounded-3xl border border-drac-accent/40 shadow-2xl backdrop-blur-2xl flex flex-col items-center gap-4">
-               <div className="relative">
-                 <Loader2 className="text-drac-accent animate-spin" size={32} />
-                 <div className="absolute inset-0 bg-drac-accent/20 blur-xl animate-pulse"></div>
-               </div>
-               <div className="flex flex-col items-center">
-                 <span className="text-[10px] font-black tracking-[0.5em] text-drac-accent animate-pulse uppercase">Analyzing System</span>
-                 <span className="text-[8px] font-bold text-drac-text-secondary/50 tracking-widest uppercase mt-1">Cross-Path Variable Resolution</span>
-               </div>
-            </div>
-          </div>
-        )}
+        <LoadingOverlay 
+          isVisible={isAnalyzing} 
+          title="Analyzing System" 
+          subtitle="Cross-Path Variable Resolution"
+        />
       </div>
     </div>
   );

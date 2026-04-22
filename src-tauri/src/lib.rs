@@ -5,6 +5,8 @@ mod state;
 mod storage;
 mod events;
 mod sql_analyzer;
+mod lexer;
+mod formatter;
 
 use std::sync::Mutex;
 use state::{AppState, AppStateWrapper};
@@ -19,7 +21,6 @@ pub fn run() {
         .manage(AppStateWrapper(Mutex::new(AppState::new())))
         .setup(|app| {
             let app_handle = app.handle().clone();
-            let state = app.state::<AppStateWrapper>();
             
             // Load persistent files on startup in background
             tauri::async_runtime::spawn(async move {
@@ -63,7 +64,8 @@ pub fn run() {
             commands::bulk_translate_v2,
             commands::toggle_file_enabled,
             commands::toggle_all_files,
-            commands::analyze_sql
+            commands::analyze_sql,
+            commands::format_sql
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

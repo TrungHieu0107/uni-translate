@@ -477,6 +477,14 @@ pub async fn bulk_translate_v2(
 }
 
 #[tauri::command]
+pub fn format_sql(query: String) -> String {
+    let tokens = crate::lexer::tokenize(&query);
+    crate::formatter::format(tokens)
+}
+
+#[tauri::command]
 pub async fn analyze_sql(query: String) -> Result<crate::sql_analyzer::SqlAnalysis, String> {
-    Ok(crate::sql_analyzer::analyze_sql(&query))
+    let mut analysis = crate::sql_analyzer::analyze_sql(&query);
+    analysis.formatted_sql = format_sql(query);
+    Ok(analysis)
 }

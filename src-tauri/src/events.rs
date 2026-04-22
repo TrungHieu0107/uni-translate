@@ -10,6 +10,7 @@ pub struct ParseProgressEvent {
     pub percent: f32,          // 0.0 - 100.0
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Serialize)]
 pub struct ParseCompleteEvent {
     pub file_info: FileInfo,
@@ -17,6 +18,7 @@ pub struct ParseCompleteEvent {
     pub duration_ms: u64,
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Serialize)]
 pub struct ParseErrorEvent {
     pub file_name: String,

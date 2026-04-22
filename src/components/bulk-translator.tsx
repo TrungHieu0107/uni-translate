@@ -1,51 +1,30 @@
-import React, { useState, useEffect, useMemo, useRef, forwardRef, useCallback } from "react";
-import { Copy, ArrowRightLeft, Languages, Check, Loader2, Plus, Trash2, GripHorizontal, RefreshCw, Database } from "lucide-react";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { Plus, Languages, Database } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
-import { SheetMeta, ScanResult } from "../hooks/use-dictionary";
-import { useAutoTableDetect } from "../hooks/use-auto-table-detect";
-import { DetectionBanner } from "./detection-banner";
-
-interface MatchSpan {
-  start: number;
-  end: number;
-  match_id: number;
-}
+import { ScanResult, SheetMeta } from "../hooks/use-dictionary";
+import { SessionRow, Session } from "./bulk-translator/session-row";
+import { PageHeader } from "./ui/page-header";
+import { Badge } from "./ui/badge";
 
 interface BulkTranslateResult {
   outputText: string;
-  inputSpans: MatchSpan[];
-  outputSpans: MatchSpan[];
-}
-
-interface Session {
-  id: string;
-  name: string;
-  input: string;
-  output: string;
-  inputSpans: MatchSpan[];
-  outputSpans: MatchSpan[];
-  direction: "en_to_ja" | "ja_to_en";
-  height: number;
-  isTranslating: boolean;
-  copied: boolean;
-  isInputFocused: boolean;
+  inputSpans: any[];
+  outputSpans: any[];
 }
 
 function decodeBinaryResponse(buffer: ArrayBuffer): BulkTranslateResult {
   const view = new DataView(buffer);
   let offset = 0;
 
-  // 1. Output Text
   const outputTextLen = view.getUint32(offset, true);
   offset += 4;
   const outputTextBytes = new Uint8Array(buffer, offset, outputTextLen);
   const outputText = new TextDecoder().decode(outputTextBytes);
   offset += outputTextLen;
 
-  // 2. Input Spans
   const inputSpanCount = view.getUint32(offset, true);
   offset += 4;
-  const inputSpans: MatchSpan[] = [];
+  const inputSpans = [];
   for (let i = 0; i < inputSpanCount; i++) {
     inputSpans.push({
       start: view.getUint32(offset, true),
@@ -55,10 +34,9 @@ function decodeBinaryResponse(buffer: ArrayBuffer): BulkTranslateResult {
     offset += 12;
   }
 
-  // 3. Output Spans
   const outputSpanCount = view.getUint32(offset, true);
   offset += 4;
-  const outputSpans: MatchSpan[] = [];
+  const outputSpans = [];
   for (let i = 0; i < outputSpanCount; i++) {
     outputSpans.push({
       start: view.getUint32(offset, true),
@@ -70,413 +48,6 @@ function decodeBinaryResponse(buffer: ArrayBuffer): BulkTranslateResult {
 
   return { outputText, inputSpans, outputSpans };
 }
-
-const SegmentedViewer = React.memo(forwardRef<HTMLDivElement, { 
-  text: string,
-  spans: MatchSpan[], 
-  className?: string, 
-  placeholder?: string,
-  onManualClick?: () => void,
-  hoverMatchId: number | null,
-  setHoverMatchId: (id: number | null) => void,
-  onScroll?: (e: React.UIEvent<HTMLDivElement>) => void
-}>(({ text, spans, className, placeholder, onManualClick, hoverMatchId, setHoverMatchId, onScroll }, ref) => {
-  const elements = useMemo(() => {
-    if (!text && placeholder) return null;
-
-    const result: any[] = [];
-    let lastPos = 0;
-
-    spans.forEach((span, idx) => {
-      // Add plain text before match
-      if (span.start > lastPos) {
-        result.push(<span key={`p-${idx}`}>{text.slice(lastPos, span.start)}</span>);
-      }
-      // Add highlighted match
-      result.push(
-        <span
-          key={`m-${idx}`}
-          className={`transition-all duration-150 rounded text-drac-accent font-bold cursor-help ${
-            hoverMatchId !== null && span.match_id === hoverMatchId 
-              ? "bg-drac-accent/30 text-drac-accent-hover ring-1 ring-drac-accent/50" 
-              : ""
-          }`}
-          onMouseEnter={() => setHoverMatchId(span.match_id)}
-          onMouseLeave={() => setHoverMatchId(null)}
-        >
-          {text.slice(span.start, span.end)}
-        </span>
-      );
-      lastPos = span.end;
-    });
-
-    // Add remaining text
-    if (lastPos < text.length) {
-      result.push(<span key="final">{text.slice(lastPos)}</span>);
-    }
-    return result;
-  }, [text, spans, placeholder, hoverMatchId, setHoverMatchId]);
-
-  if (!text && placeholder) {
-    return (
-      <div className={`p-4 text-drac-text-secondary italic text-sm ${className}`} onClick={onManualClick}>
-        {placeholder}
-      </div>
-    );
-  }
-
-  return (
-    <div 
-      ref={ref}
-      className={`p-3 font-mono text-sm leading-relaxed whitespace-pre-wrap break-words overflow-y-auto scrollbar-dracula ${className}`}
-      onClick={onManualClick}
-      onScroll={onScroll}
-    >
-      {elements}
-    </div>
-  );
-}));
-
-SegmentedViewer.displayName = "SegmentedViewer";
-
-const SessionRow = React.memo(({ 
-  session, 
-  index, 
-  disabled, 
-  hoverMatchId, 
-  setHoverMatchId,
-  updateSession,
-  toggleDirection,
-  handleTranslate,
-  handleCopy,
-  removeSession,
-  startResize,
-  knownSheets,
-  activeSelection,
-  onAutoAdd,
-  onAutoRemove,
-  isApplying
-}: { 
-  session: Session, 
-  index: number, 
-  disabled: boolean,
-  hoverMatchId: number | null,
-  setHoverMatchId: (id: number | null) => void,
-  updateSession: (id: string, update: Partial<Session>) => void,
-  toggleDirection: (id: string) => void,
-  handleTranslate: (id: string) => void,
-  handleCopy: (id: string) => void,
-  removeSession: (id: string) => void,
-  startResize: (id: string, startHeight: number, clientY: number) => void,
-  knownSheets: SheetMeta[],
-  activeSelection: Set<string>,
-  onAutoAdd: (sheetNames: string[]) => Promise<void>,
-  onAutoRemove: (sheetNames: string[]) => Promise<void>,
-  isApplying: boolean
-}) => {
-  const inputRef = useRef<any>(null);
-  const outputRef = useRef<HTMLDivElement>(null);
-  const isSyncing = useRef(false);
-
-  const {
-    detectionResult,
-    handleInput,
-    dismissBanner,
-    toggleExclusion,
-    excludedTables,
-  } = useAutoTableDetect(
-    knownSheets,
-    activeSelection,
-    onAutoAdd,
-    onAutoRemove
-  );
-
-  useEffect(() => {
-    handleInput(session.input);
-  }, [session.input, handleInput]);
-
-  // Auto-detect direction based on input content
-  useEffect(() => {
-    if (!session.input.trim()) return;
-    
-    const hasJapanese = /[^\x00-\x7F]/.test(session.input); // Simple check for non-ASCII
-    const targetDirection = hasJapanese ? "ja_to_en" : "en_to_ja";
-    
-    if (session.direction !== targetDirection) {
-      updateSession(session.id, { direction: targetDirection });
-    }
-  }, [session.input, session.id]); // Note: only triggers on input change
-
-  const onPaste = (e: React.ClipboardEvent) => {
-    const text = e.clipboardData.getData('text');
-    if (text) {
-      handleInput(text);
-    }
-  };
-
-  const handleScroll = useCallback((source: 'input' | 'output') => (e: any) => {
-    if (isSyncing.current) return;
-    
-    const target = source === 'input' ? outputRef.current : inputRef.current;
-    if (target) {
-      isSyncing.current = true;
-      target.scrollTop = e.target.scrollTop;
-      // Reset sync flag in the next frame to allow the target's scroll event to be ignored
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          isSyncing.current = false;
-        });
-      });
-    }
-  }, []);
-
-  const isSessionTranslating = session.isTranslating;
-  const isSystemSyncing = isApplying;
-  const showOverlay = isSessionTranslating || isSystemSyncing;
-  
-  const [internalLoading, setInternalLoading] = useState(false);
-  const [isFadingOut, setIsFadingOut] = useState(false);
-
-  useEffect(() => {
-    if (showOverlay) {
-      setInternalLoading(true);
-      setIsFadingOut(false);
-    } else if (internalLoading) {
-      // Content updated in props. Wait for render & paint.
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          setIsFadingOut(true);
-          setTimeout(() => {
-            setInternalLoading(false);
-            setIsFadingOut(false);
-          }, 400); // 400ms transition
-        });
-      });
-    }
-  }, [showOverlay, internalLoading]);
-
-  return (
-    <div className="flex flex-col bg-drac-bg-secondary rounded-xl border border-drac-border shadow-lg animate-slide-up relative group overflow-hidden">
-      
-      {/* Overlay Index */}
-      <div className="absolute top-4 left-4 z-10 flex items-center gap-2 pointer-events-none">
-        <span className="w-6 h-6 rounded-full bg-drac-bg-tertiary flex items-center justify-center text-[10px] font-bold text-drac-text-secondary border border-drac-border shadow-sm">
-          {index + 1}
-        </span>
-      </div>
-      
-      {/* High Density Editor Pane */}
-      <div className="flex flex-col border-t border-transparent">
-        <div 
-          className="flex gap-2 p-3 pl-12" // Padding left to clear the index circle
-          style={{ height: `${session.height}px` }}
-        >
-          {/* Input Box */}
-          <div className="flex-1 flex flex-col bg-drac-bg-primary rounded-lg border border-drac-border overflow-hidden shadow-inner focus-within:border-drac-accent/50 transition-colors">
-            <div className="bg-drac-bg-tertiary px-3 py-1.5 flex justify-between items-center border-b border-drac-border/50">
-              <button 
-                className="text-[10px] font-bold uppercase tracking-widest text-drac-accent hover:text-drac-accent-hover flex items-center gap-1 transition-colors"
-                onClick={() => toggleDirection(session.id)}
-                title="Click to toggle language"
-              >
-                {session.direction === "en_to_ja" ? "Source: English" : "Source: Japanese"}
-                <RefreshCw size={10} className="opacity-50" />
-              </button>
-              
-              <button 
-                className={`p-1 rounded hover:bg-drac-bg-secondary transition-colors ${isSessionTranslating ? 'animate-spin text-drac-accent' : 'text-drac-success'}`}
-                onClick={() => handleTranslate(session.id)}
-                disabled={disabled || isSessionTranslating || isSystemSyncing || !session.input.trim()}
-                title="Force translate now"
-              >
-                {isSessionTranslating ? <Loader2 size={12} /> : <Languages size={12} />}
-              </button>
-            </div>
-            {session.isInputFocused || !session.inputSpans.length ? (
-              <textarea
-                ref={inputRef}
-                className="flex-1 w-full bg-transparent p-3 resize-none outline-none font-mono text-sm leading-relaxed scrollbar-dracula"
-                placeholder={session.direction === "en_to_ja" ? "Paste English text..." : "Paste Japanese text..."}
-                value={session.input}
-                onChange={(e) => updateSession(session.id, { input: e.target.value })}
-                onFocus={() => updateSession(session.id, { isInputFocused: true })}
-                onBlur={() => updateSession(session.id, { isInputFocused: false })}
-                onScroll={handleScroll('input')}
-                disabled={disabled}
-                spellCheck={false}
-                autoFocus={session.isInputFocused}
-                onPaste={onPaste}
-              />
-            ) : (
-              <SegmentedViewer 
-                ref={inputRef}
-                text={session.input}
-                spans={session.inputSpans}
-                className="flex-1 cursor-text"
-                onManualClick={() => updateSession(session.id, { isInputFocused: true })}
-                hoverMatchId={hoverMatchId}
-                setHoverMatchId={setHoverMatchId}
-                onScroll={handleScroll('input')}
-              />
-            )}
-          </div>
-
-          {/* Middle Controls */}
-          <div className="flex flex-col items-center justify-center gap-2 text-drac-border/50 w-8">
-            <button 
-              className="p-1.5 rounded-full hover:bg-drac-bg-tertiary text-drac-text-secondary hover:text-drac-accent transition-all active:rotate-180"
-              onClick={() => toggleDirection(session.id)}
-              title="Swap Languages"
-            >
-              <ArrowRightLeft size={16} />
-            </button>
-          </div>
-
-          {/* Output Box */}
-          <div className="flex-1 flex flex-col bg-drac-bg-primary rounded-lg border border-drac-border overflow-hidden shadow-inner relative group/output">
-            <div className="bg-drac-bg-tertiary px-3 py-1.5 flex justify-between items-center border-b border-drac-border/50">
-              <button 
-                className="text-[10px] font-bold uppercase tracking-widest text-drac-text-secondary hover:text-drac-text-primary flex items-center gap-1 transition-colors"
-                onClick={() => toggleDirection(session.id)}
-                title="Click to toggle language"
-              >
-                {session.direction === "en_to_ja" ? "Target: Japanese" : "Target: English"}
-                <RefreshCw size={10} className="opacity-50" />
-              </button>
-            </div>
-            
-            <div className="flex-1 relative overflow-hidden">
-              <SegmentedViewer 
-                ref={outputRef}
-                text={session.output}
-                spans={session.outputSpans}
-                className="h-full"
-                placeholder="Translation will appear here..."
-                hoverMatchId={hoverMatchId}
-                setHoverMatchId={setHoverMatchId}
-                onScroll={handleScroll('output')}
-              />
-
-              {internalLoading && (
-                <div className={`absolute inset-0 bg-drac-bg-primary/80 backdrop-blur-md z-20 flex flex-col items-center justify-center overflow-hidden transition-all duration-400 ease-out ${isFadingOut ? 'opacity-0 scale-105 pointer-events-none' : 'opacity-100 scale-100'}`}>
-                  {/* Scanning background elements */}
-                  <div className="absolute inset-0 bg-[linear-gradient(rgba(189,147,249,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(189,147,249,0.05)_1px,transparent_1px)] bg-[size:20px_20px] [mask-image:radial-gradient(ellipse_60%_60%_at_50%_50%,#000_10%,transparent_100%)]" />
-                  <div className="absolute inset-0 bg-gradient-to-b from-transparent via-drac-accent/10 to-transparent h-32 w-full animate-scanline opacity-40" />
-                  
-                  {/* Core Loader Object */}
-                  <div className="relative flex flex-col items-center justify-center p-8">
-                    <div className="relative w-24 h-24 flex items-center justify-center">
-                      {/* Outer spinning rings */}
-                      <svg className="absolute inset-0 w-full h-full text-drac-accent/30 drop-shadow-[0_0_10px_rgba(189,147,249,0.5)]" viewBox="0 0 100 100" style={{ animation: 'spin 4s linear infinite' }}>
-                        <circle cx="50" cy="50" r="48" fill="none" stroke="currentColor" strokeWidth="1" strokeDasharray="10 5 30 15" opacity="0.5" />
-                        <circle cx="50" cy="50" r="40" fill="none" stroke="currentColor" strokeWidth="1" strokeDasharray="50 20" opacity="0.8" />
-                      </svg>
-                      
-                      {/* Inner counter-rotating ring */}
-                      <svg className="absolute inset-2 w-20 h-20 text-drac-text-secondary/50" viewBox="0 0 100 100" style={{ animation: 'spin 3s linear infinite reverse' }}>
-                        <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="20 10 5 10" />
-                      </svg>
-                      
-                      {/* Center pulsing core */}
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="w-10 h-10 bg-drac-accent/20 rounded-full blur-md animate-pulse-glow absolute" />
-                        <Database size={24} className="text-drac-accent animate-pulse relative z-10 drop-shadow-[0_0_8px_rgba(189,147,249,1)]" />
-                      </div>
-                    </div>
-                    
-                    {/* Status Text Area */}
-                    <div className="mt-8 flex flex-col items-center gap-2">
-                      <div className="flex items-center gap-3">
-                        <div className="h-px w-8 bg-gradient-to-r from-transparent to-drac-accent/80" />
-                        <span className="text-[11px] font-black text-drac-accent tracking-[0.4em] animate-pulse uppercase drop-shadow-[0_0_8px_rgba(189,147,249,0.8)]">
-                          {isApplying ? "Syncing Dictionary..." : "Neural Matrix Active..."}
-                        </span>
-                        <div className="h-px w-8 bg-gradient-to-l from-transparent to-drac-accent/80" />
-                      </div>
-                      
-                      {/* Hex Data Stream */}
-                      <div className="flex gap-1.5 opacity-70">
-                         <div className="w-4 h-1 bg-drac-accent rounded-sm animate-pulse" style={{ animationDelay: '0ms' }} />
-                         <div className="w-2 h-1 bg-drac-accent/60 rounded-sm animate-pulse" style={{ animationDelay: '150ms' }} />
-                         <div className="w-6 h-1 bg-drac-text-secondary/80 rounded-sm animate-pulse" style={{ animationDelay: '300ms' }} />
-                         <div className="w-3 h-1 bg-drac-accent/80 rounded-sm animate-pulse" style={{ animationDelay: '450ms' }} />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-[9px] font-mono font-bold text-drac-text-secondary/50 tracking-[0.3em] uppercase">
-                    System processing translation vectors
-                  </div>
-                </div>
-              )}
-
-              {session.copied && (
-                <div className="absolute top-4 right-4 bg-drac-success text-drac-bg-primary text-[10px] font-black px-3 py-1 rounded shadow-lg animate-bounce-in z-50 tracking-widest uppercase">
-                  Copied to clipboard
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Detection Banner (Auto-applied notification) */}
-        {detectionResult && (
-          <DetectionBanner 
-            result={detectionResult}
-            isApplied={true}
-            onDismiss={dismissBanner}
-            onToggleExclusion={toggleExclusion}
-            excludedTables={excludedTables}
-          />
-        )}
-
-        {/* Footer Action Bar */}
-        <div className="flex items-center justify-between px-3 py-2 bg-drac-bg-tertiary/30 border-t border-drac-border/50">
-          <div className="text-[10px] text-drac-text-secondary font-medium">
-            {session.input.length > 0 && `${session.input.length} characters`}
-          </div>
-          
-          <div className="flex items-center gap-2">
-            {session.output && (
-              <button
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all active:scale-95 ${
-                  session.copied 
-                    ? "bg-drac-success/20 text-drac-success border border-drac-success/30" 
-                    : "bg-drac-bg-primary text-drac-text-primary border border-drac-border hover:border-drac-accent hover:text-drac-accent shadow-sm"
-                }`}
-                onClick={() => handleCopy(session.id)}
-              >
-                {session.copied ? <Check size={14} /> : <Copy size={14} />}
-                {session.copied ? "COPIED" : "COPY RESULT"}
-              </button>
-            )}
-            
-            <button
-              className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold bg-drac-bg-primary text-drac-text-secondary border border-drac-border hover:border-drac-danger hover:text-drac-danger hover:bg-drac-danger-bg transition-all active:scale-95 shadow-sm"
-              onClick={() => removeSession(session.id)}
-              title="Remove Section"
-            >
-              <Trash2 size={14} />
-              REMOVE
-            </button>
-          </div>
-        </div>
-
-        {/* Resize Handle at the very bottom */}
-        <div 
-          className="h-1 bg-drac-bg-tertiary hover:bg-drac-accent/50 cursor-ns-resize flex items-center justify-center transition-colors group/handle active:bg-drac-accent"
-          onMouseDown={(e) => startResize(session.id, session.height, e.clientY)}
-          title="Drag to resize height"
-        >
-          <GripHorizontal size={12} className="text-drac-border opacity-0 group-hover/handle:opacity-100 transition-opacity" />
-        </div>
-
-
-      </div>
-    </div>
-  );
-});
-
 
 export function BulkTranslator({ 
   disabled,
@@ -512,33 +83,27 @@ export function BulkTranslator({
     } catch (e) {
       console.warn("Failed to restore bulk translator sessions");
     }
-    return [
-      {
-        id: "1",
-        name: "Translation 1",
-        input: "",
-        output: "",
-        direction: "en_to_ja",
-        height: 250,
-        isTranslating: false,
-        copied: false,
-        isInputFocused: false,
-        inputSpans: [],
-        outputSpans: [],
-      },
-    ];
+    return [{
+      id: "1",
+      name: "Translation 1",
+      input: "",
+      output: "",
+      direction: "en_to_ja",
+      height: 250,
+      isTranslating: false,
+      copied: false,
+      isInputFocused: false,
+      inputSpans: [],
+      outputSpans: [],
+    }];
   });
 
   useEffect(() => {
-    const toSave = sessions.map(s => {
-      const { isTranslating, copied, isInputFocused, ...rest } = s;
-      return rest;
-    });
+    const toSave = sessions.map(({ isTranslating, copied, isInputFocused, ...rest }) => rest);
     localStorage.setItem("bulk_translator_sessions", JSON.stringify(toSave));
   }, [sessions]);
 
   const [hoverMatchId, setHoverMatchId] = useState<number | null>(null);
-
   const [resizingId, setResizingId] = useState<string | null>(null);
   const resizeStartY = useRef<number>(0);
   const resizeStartHeight = useRef<number>(0);
@@ -568,24 +133,20 @@ export function BulkTranslator({
       delete timersRef.current[id];
     }
     if (sessions.length <= 1) {
-      updateSession(id, { input: "", output: "" });
+      updateSession(id, { input: "", output: "", inputSpans: [], outputSpans: [] });
       return;
     }
     setSessions(sessions.filter((s) => s.id !== id));
   };
 
   const updateSession = (id: string, update: Partial<Session>) => {
-    setSessions((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, ...update } : s))
-    );
+    setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, ...update } : s)));
   };
 
   const toggleDirection = (id: string) => {
     const session = sessions.find(s => s.id === id);
     if (!session) return;
-    updateSession(id, { 
-      direction: session.direction === "en_to_ja" ? "ja_to_en" : "en_to_ja" 
-    });
+    updateSession(id, { direction: session.direction === "en_to_ja" ? "ja_to_en" : "en_to_ja" });
   };
 
   const handleTranslate = async (id: string) => {
@@ -598,11 +159,8 @@ export function BulkTranslator({
         text: session.input,
         direction: session.direction,
       });
-      
-      // Tauri returns Vec<u8> as a number array, convert to ArrayBuffer
       const uint8 = new Uint8Array(res);
       const result = decodeBinaryResponse(uint8.buffer);
-      
       updateSession(id, { 
         output: result.outputText,
         inputSpans: result.inputSpans,
@@ -614,19 +172,6 @@ export function BulkTranslator({
       updateSession(id, { isTranslating: false });
     }
   };
-
-  const knownSheets = useMemo(() => {
-    if (!scanResult) return [];
-    const all: SheetMeta[] = [];
-    scanResult.files.forEach((f: any) => {
-      // Collect table sheets for detection matching
-      f.table_sheets.forEach((s: SheetMeta) => all.push(s));
-    });
-    return all;
-  }, [scanResult]);
-
-  const activeSelectionSet = useMemo(() => new Set(selectedSheets), [selectedSheets]);
-
 
   const handleCopy = (id: string) => {
     const session = sessions.find((s) => s.id === id);
@@ -652,7 +197,6 @@ export function BulkTranslator({
         updateSession(resizingId, { height: newHeight });
       }
     };
-
     const handleMouseUp = () => {
       if (resizingId) {
         setResizingId(null);
@@ -660,12 +204,10 @@ export function BulkTranslator({
         document.body.style.userSelect = 'auto';
       }
     };
-
     if (resizingId) {
       window.addEventListener('mousemove', handleMouseMove);
       window.addEventListener('mouseup', handleMouseUp);
     }
-
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
@@ -677,51 +219,46 @@ export function BulkTranslator({
   const sheetsJoined = selectedSheets.join('|');
 
   useEffect(() => {
-    // Don't trigger translation while the backend is busy rebuilding the dictionary
     if (isApplying) return;
-
     sessions.forEach((session) => {
       if (!session.input.trim()) {
         if (session.output !== "" || session.outputSpans.length > 0) {
-          updateSession(session.id, { 
-            output: "", 
-            inputSpans: [], 
-            outputSpans: [] 
-          });
+          updateSession(session.id, { output: "", inputSpans: [], outputSpans: [] });
         }
         return;
       }
-      if (timersRef.current[session.id]) {
-        window.clearTimeout(timersRef.current[session.id]);
-      }
-      timersRef.current[session.id] = window.setTimeout(() => {
-        handleTranslate(session.id);
-      }, 500);
+      if (timersRef.current[session.id]) window.clearTimeout(timersRef.current[session.id]);
+      timersRef.current[session.id] = window.setTimeout(() => handleTranslate(session.id), 500);
     });
-
-    return () => {
-      Object.values(timersRef.current).forEach(window.clearTimeout);
-    };
+    return () => Object.values(timersRef.current).forEach(window.clearTimeout);
   }, [inputsJoined, directionsJoined, sheetsJoined, isApplying]);
+
+  const knownSheets = useMemo(() => {
+    if (!scanResult) return [];
+    const all: SheetMeta[] = [];
+    scanResult.files.forEach((f: any) => f.table_sheets.forEach((s: SheetMeta) => all.push(s)));
+    return all;
+  }, [scanResult]);
+
+  const activeSelectionSet = useMemo(() => new Set(selectedSheets), [selectedSheets]);
 
   return (
     <div className="flex flex-col h-full w-full bg-drac-bg-primary text-drac-text-primary overflow-hidden">
-      {/* Header with Stats */}
-      <div className="px-6 py-3 bg-drac-bg-tertiary/30 border-b border-drac-border flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Languages size={18} className="text-drac-accent" />
-          <h2 className="text-sm font-bold tracking-tight">Bulk Translator</h2>
-          <div className="flex items-center gap-2 px-2 py-0.5 bg-drac-accent/10 border border-drac-accent/20 rounded-full">
+      <PageHeader 
+        title="Bulk Translator"
+        icon={<Languages size={18} className="text-drac-accent" />}
+        actions={
+          <Badge variant="accent" className="gap-2 py-1 px-3">
             <Database size={10} className="text-drac-accent" />
-            <span className="text-[10px] font-mono text-drac-accent">
-              {scanResult ? selectedSheets.length : 0} Tables • {sessions.reduce((acc, s) => acc + s.outputSpans.length, 0)} Matches
+            <span className="font-mono uppercase tracking-widest text-[9px]">
+              {selectedSheets.length} Active Tables • {sessions.reduce((acc, s) => acc + s.outputSpans.length, 0)} Total Matches
             </span>
-          </div>
-        </div>
-      </div>
+          </Badge>
+        }
+      />
 
       <div className="flex-1 overflow-y-auto scrollbar-dracula p-6 relative">
-        <div className="flex flex-col gap-6 pb-32 w-full pt-4">
+        <div className="flex flex-col gap-8 pb-32 w-full pt-4">
           {sessions.map((session, index) => (
             <SessionRow 
               key={session.id}
@@ -744,15 +281,16 @@ export function BulkTranslator({
             />
           ))}
 
-          {/* Large Add Button at bottom */}
           <button
             onClick={addSession}
-            className="w-full py-5 rounded-xl border-2 border-dashed border-drac-border hover:border-drac-accent hover:bg-drac-bg-secondary flex flex-col items-center justify-center gap-2 group transition-all shrink-0 active:scale-[0.99]"
+            className="w-full py-8 rounded-2xl border-2 border-dashed border-drac-border hover:border-drac-accent hover:bg-drac-bg-secondary flex flex-col items-center justify-center gap-3 group transition-all shrink-0 active:scale-[0.99] bg-drac-bg-secondary/20"
           >
-            <div className="w-10 h-10 rounded-full bg-drac-bg-secondary flex items-center justify-center border border-drac-border group-hover:bg-drac-accent group-hover:text-drac-text-inverse transition-colors">
-              <Plus size={20} />
+            <div className="w-12 h-12 rounded-full bg-drac-bg-secondary flex items-center justify-center border border-drac-border group-hover:bg-drac-accent group-hover:text-drac-bg-primary transition-all group-hover:scale-110 shadow-lg">
+              <Plus size={24} />
             </div>
-            <span className="text-xs font-bold text-drac-text-secondary group-hover:text-drac-accent">Add Another Translation Section</span>
+            <span className="text-xs font-black uppercase tracking-[0.2em] text-drac-text-secondary group-hover:text-drac-accent transition-colors">
+              Add Translation Unit
+            </span>
           </button>
         </div>
       </div>

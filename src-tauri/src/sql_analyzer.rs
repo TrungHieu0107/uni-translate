@@ -40,6 +40,7 @@ pub struct SqlAnalysis {
     pub complexity_score: u32,
     pub suggestions: Vec<String>,
     pub highlighted_positions: Vec<(usize, usize, String)>,
+    pub formatted_sql: String,
 }
 
 // Pass 1 Keywords
@@ -188,6 +189,7 @@ pub fn analyze_sql(query: &str) -> SqlAnalysis {
         complexity_score,
         suggestions,
         highlighted_positions: highlights,
+        formatted_sql: String::new(),
     }
 }
 
