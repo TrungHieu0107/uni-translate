@@ -7,6 +7,7 @@ mod events;
 mod sql_analyzer;
 mod lexer;
 mod formatter;
+pub mod sql;
 
 use std::sync::Mutex;
 use state::{AppState, AppStateWrapper};
