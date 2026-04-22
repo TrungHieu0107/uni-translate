@@ -478,8 +478,11 @@ pub async fn bulk_translate_v2(
 
 #[tauri::command]
 pub fn format_sql(query: String) -> String {
-    let tokens = crate::lexer::tokenize(&query);
-    crate::formatter::format(tokens)
+    use crate::sql::dialects::tsql::TSqlDialect;
+    use crate::sql::SqlEngine;
+
+    let engine = SqlEngine::new(Box::new(TSqlDialect));
+    engine.format(&query)
 }
 
 #[tauri::command]
