@@ -3,7 +3,6 @@ import { Upload, X, FileSpreadsheet, Trash2, Link, Database, CheckSquare, Square
 import { FileInfo } from "../hooks/use-dictionary";
 import { FileItemSkeleton } from "./ui/skeleton";
 import { Button } from "./ui/button";
-import { Badge } from "./ui/badge";
 
 interface FileManagerProps {
   files: FileInfo[];
@@ -231,7 +230,5 @@ export function FileManager({
         </div>
       )}
     </aside>
-  );
-}
   );
 }

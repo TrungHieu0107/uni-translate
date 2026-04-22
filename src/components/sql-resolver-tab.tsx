@@ -216,6 +216,3 @@ export function SQLResolverTab() {
     </div>
   );
 }
-
-  );
-}

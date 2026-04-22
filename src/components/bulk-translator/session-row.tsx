@@ -5,7 +5,6 @@ import { useAutoTableDetect } from "../../hooks/use-auto-table-detect";
 import { DetectionBanner } from "../detection-banner";
 import { SegmentedViewer } from "./segmented-viewer";
 import { Button } from "../ui/button";
-import { Badge } from "../ui/badge";
 
 interface MatchSpan {
   start: number;

@@ -130,8 +130,6 @@ const ResultItem = React.memo(({
     </div>
   );
 });
-  );
-});
 
 const SectionHeader = React.memo(({ title, className }: { title: string, className: string }) => {
   return (

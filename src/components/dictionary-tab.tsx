@@ -6,7 +6,7 @@ import { LoadingOverlay } from "./ui/loading-overlay";
 
 interface DictionaryTabProps {
   files: any[];
-  search: (keyword: string) => Promise<SearchResult>;
+  search: (keyword: string) => Promise<SearchResult | null>;
 }
 
 export function DictionaryTab({ files, search }: DictionaryTabProps) {
@@ -51,9 +51,9 @@ export function DictionaryTab({ files, search }: DictionaryTabProps) {
       
       <div className="flex-1 overflow-hidden relative">
         <LoadingOverlay 
-          visible={isSearching} 
-          message="Searching Index..."
-          subMessage="Direct Memory Access"
+          isVisible={isSearching} 
+          title="Searching Index..."
+          subtitle="Direct Memory Access"
         />
         <ResultList 
           results={results}

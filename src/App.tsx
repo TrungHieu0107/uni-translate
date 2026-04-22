@@ -224,8 +224,6 @@ function App() {
       <ParseProgressBar progress={progress} />
     </div>
   );
-}
-
-export default App;
+};
 
 export default App;

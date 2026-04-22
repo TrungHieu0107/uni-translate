@@ -1,8 +1,8 @@
 import React from 'react';
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'accent';
-  size?: 'sm' | 'md' | 'lg' | 'icon';
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'accent' | 'success';
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'icon';
   isLoading?: boolean;
   leftIcon?: React.ReactNode;
   rightIcon?: React.ReactNode;
@@ -18,9 +18,11 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       ghost: 'bg-transparent text-drac-text-secondary hover:bg-drac-accent/10 hover:text-drac-accent',
       danger: 'bg-drac-danger-bg text-drac-danger border border-drac-danger/30 hover:bg-drac-danger/20',
       accent: 'bg-drac-accent text-drac-bg-primary hover:bg-drac-accent-hover shadow-[0_0_15px_rgba(189,147,249,0.3)] hover:shadow-[0_0_20px_rgba(189,147,249,0.5)]',
+      success: 'bg-drac-success/20 text-drac-success border border-drac-success/30 hover:bg-drac-success/30',
     };
 
     const sizes = {
+      xs: 'h-7 px-2 text-[10px] uppercase tracking-wider font-bold',
       sm: 'h-8 px-3 text-xs',
       md: 'h-10 px-4 text-sm',
       lg: 'h-12 px-6 text-base',

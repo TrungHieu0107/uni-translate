@@ -19,7 +19,6 @@ pub fn run() {
         .manage(AppStateWrapper(Mutex::new(AppState::new())))
         .setup(|app| {
             let app_handle = app.handle().clone();
-            let state = app.state::<AppStateWrapper>();
             
             // Load persistent files on startup in background
             tauri::async_runtime::spawn(async move {
