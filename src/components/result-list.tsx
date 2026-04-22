@@ -48,35 +48,34 @@ const ResultItem = React.memo(({
   return (
     <div 
       onClick={onFocus}
-      className={`${GRID_LAYOUT} py-3 group transition-all duration-75 relative cursor-pointer border-y border-transparent z-0 hover:z-10
+      className={`${GRID_LAYOUT} py-3 group transition-all duration-75 relative cursor-pointer border-y border-transparent z-0
         ${isFocused 
-          ? 'bg-drac-accent/20 border-drac-accent/30 shadow-[inset_0_0_30px_rgba(189,147,249,0.1)]' 
-          : 'bg-transparent hover:bg-[#44475a]/60 hover:border-drac-accent/20 hover:shadow-xl'
+          ? 'bg-drac-accent/20 border-drac-accent/40 shadow-[inset_0_0_40px_rgba(189,147,249,0.15)] ring-1 ring-drac-accent/30 z-10' 
+          : 'bg-transparent hover:bg-drac-bg-secondary hover:border-drac-border/50 hover:shadow-xl hover:z-10'
         }
         ${isExact && !isFocused ? 'bg-drac-accent/5' : ''}
       `}
     >
       {/* Selection/Hover Indicator Line */}
-      <div className={`absolute left-0 top-1 bottom-1 w-1 rounded-r-full transition-all duration-150 ${
+      <div className={`absolute left-0 top-0 bottom-0 w-1 transition-all duration-200 ${
         isFocused 
           ? 'bg-drac-accent opacity-100' 
-          : 'bg-drac-accent opacity-0 group-hover:opacity-60 group-hover:h-full group-hover:top-0 group-hover:bottom-0'
+          : 'bg-drac-accent opacity-0 group-hover:opacity-40 group-hover:w-0.5'
       }`} />
       
-      {(isExact && !isFocused) && (
-        <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-drac-accent/30 z-10" />
-      )}
+      {/* Column highlights on hover */}
+      <div className="absolute inset-0 bg-drac-accent/5 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity" />
       
       {/* Japanese Column */}
       <div 
-        className="relative flex items-center min-w-0" 
+        className="relative flex items-center min-w-0 z-10" 
         onClick={(e) => handleCopy(e, entry.ja, 'ja')}
       >
-        <div className="text-sm font-medium text-drac-text-primary truncate hover:text-drac-accent transition-colors w-full" title={entry.ja}>
+        <div className="text-sm font-bold text-drac-text-primary truncate group-hover:text-drac-accent transition-colors w-full" title={entry.ja}>
           <HighlightedText text={entry.ja} query={keyword} />
         </div>
         {copied && copyType === 'ja' && (
-          <div className="absolute -top-8 left-0 bg-drac-accent text-drac-bg-primary text-[10px] font-black px-3 py-1 rounded-full animate-bounce-in shadow-[0_0_20px_rgba(189,147,249,0.6)] z-[100] border border-drac-bg-primary whitespace-nowrap">
+          <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-drac-accent text-drac-bg-primary text-[10px] font-black px-3 py-1 rounded shadow-[0_0_20px_rgba(189,147,249,0.8)] z-[100] border border-drac-bg-primary whitespace-nowrap animate-bounce-in">
             COPIED
           </div>
         )}
@@ -84,37 +83,37 @@ const ResultItem = React.memo(({
 
       {/* English Column */}
       <div 
-        className="relative flex items-center min-w-0" 
+        className="relative flex items-center min-w-0 z-10" 
         onClick={(e) => handleCopy(e, entry.en, 'en')}
       >
-        <div className="text-[13px] font-mono text-drac-text-secondary truncate bg-drac-bg-primary/30 px-2 py-1 rounded hover:bg-drac-accent/10 hover:text-drac-accent transition-all w-full" title={entry.en}>
+        <div className="text-[13px] font-mono text-drac-text-secondary truncate bg-drac-bg-primary/50 px-2 py-1 rounded border border-drac-border/30 group-hover:border-drac-accent/30 group-hover:text-drac-accent transition-all w-full" title={entry.en}>
           <HighlightedText text={entry.en} query={keyword} />
         </div>
         {copied && copyType === 'en' && (
-          <div className="absolute -top-8 left-0 bg-drac-accent text-drac-bg-primary text-[10px] font-black px-3 py-1 rounded-full animate-bounce-in shadow-[0_0_20px_rgba(189,147,249,0.6)] z-[100] border border-drac-bg-primary whitespace-nowrap">
+          <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-drac-accent text-drac-bg-primary text-[10px] font-black px-3 py-1 rounded shadow-[0_0_20px_rgba(189,147,249,0.8)] z-[100] border border-drac-bg-primary whitespace-nowrap animate-bounce-in">
             COPIED
           </div>
         )}
       </div>
 
       {/* Table Column */}
-      <div className="flex items-center gap-2 text-[10px] font-bold text-drac-purple/80 uppercase tracking-tight bg-drac-purple/5 px-2 py-1 rounded truncate" title={entry.source_sheet}>
+      <div className="flex items-center gap-2 text-[10px] font-bold text-drac-purple/80 uppercase tracking-tight bg-drac-purple/10 px-2 py-1 rounded border border-drac-purple/20 truncate z-10" title={entry.source_sheet}>
         <TableIcon size={11} className="shrink-0" />
         <span className="truncate">{entry.source_sheet}</span>
       </div>
 
       {/* File Column */}
-      <div className="flex items-center gap-2 text-[9px] font-medium text-drac-text-secondary/60 truncate group-hover:text-drac-text-secondary transition-colors" title={entry.source_file}>
+      <div className="flex items-center gap-2 text-[9px] font-medium text-drac-text-secondary/60 truncate group-hover:text-drac-text-secondary transition-colors z-10" title={entry.source_file}>
         <FileText size={11} className="shrink-0 opacity-50" />
         <span className="truncate">{entry.source_file}</span>
       </div>
 
       {/* Actions */}
-      <div className="flex justify-end relative">
+      <div className="flex justify-end relative z-10">
         <button 
           className={`p-1.5 rounded-lg border transition-all duration-300 transform hover:scale-110 active:scale-95 ${
             copied && copyType === 'all'
-              ? "bg-drac-success/20 border-drac-success text-drac-success shadow-[0_0_15px_rgba(80,250,123,0.3)]" 
+              ? "bg-drac-success text-drac-bg-primary border-drac-success shadow-[0_0_20px_rgba(80,250,123,0.5)]" 
               : "bg-drac-bg-secondary border-drac-border text-drac-text-secondary hover:border-drac-accent hover:text-drac-accent"
           }`} 
           onClick={(e) => handleCopy(e, `${entry.ja}\t${entry.en}`, 'all')}
@@ -123,12 +122,14 @@ const ResultItem = React.memo(({
           {copied && copyType === 'all' ? <Check size={14} /> : <Copy size={14} />}
         </button>
         {copied && copyType === 'all' && (
-          <div className="absolute -top-10 right-0 bg-drac-success text-drac-bg-primary text-[10px] font-black px-3 py-1 rounded-full animate-bounce-in shadow-[0_0_20px_rgba(80,250,123,0.6)] whitespace-nowrap z-[100] border border-drac-bg-primary">
+          <div className="absolute -top-10 right-0 bg-drac-success text-drac-bg-primary text-[10px] font-black px-3 py-1 rounded shadow-[0_0_20px_rgba(80,250,123,0.8)] whitespace-nowrap z-[100] border border-drac-bg-primary animate-bounce-in">
             COPIED ALL
           </div>
         )}
       </div>
     </div>
+  );
+});
   );
 });
 
