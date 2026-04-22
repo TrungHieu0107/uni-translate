@@ -33,6 +33,13 @@ export default {
       animation: {
         shimmer: 'shimmer 2s linear infinite',
       },
+      fontSize: {
+        'xs': 'var(--fs-xs)',
+        'sm': 'var(--fs-sm)',
+        'base': 'var(--fs-base)',
+        'lg': 'var(--fs-lg)',
+        'xl': 'var(--fs-xl)',
+      },
     },
   },
   plugins: [],

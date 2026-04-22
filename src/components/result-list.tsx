@@ -71,7 +71,7 @@ const ResultItem = React.memo(({
         className="relative flex items-center min-w-0 z-10" 
         onClick={(e) => handleCopy(e, entry.ja, 'ja')}
       >
-        <div className="text-sm font-bold text-drac-text-primary truncate group-hover:text-drac-accent transition-colors w-full" title={entry.ja}>
+        <div className="text-base font-bold text-drac-text-primary truncate group-hover:text-drac-accent transition-colors w-full" title={entry.ja}>
           <HighlightedText text={entry.ja} query={keyword} />
         </div>
         {copied && copyType === 'ja' && (
@@ -86,7 +86,7 @@ const ResultItem = React.memo(({
         className="relative flex items-center min-w-0 z-10" 
         onClick={(e) => handleCopy(e, entry.en, 'en')}
       >
-        <div className="text-[13px] font-mono text-drac-text-secondary truncate bg-drac-bg-primary/50 px-2 py-1 rounded border border-drac-border/30 group-hover:border-drac-accent/30 group-hover:text-drac-accent transition-all w-full" title={entry.en}>
+        <div className="text-base font-mono text-drac-text-secondary truncate bg-drac-bg-primary/50 px-2 py-1 rounded border border-drac-border/30 group-hover:border-drac-accent/30 group-hover:text-drac-accent transition-all w-full" title={entry.en}>
           <HighlightedText text={entry.en} query={keyword} />
         </div>
         {copied && copyType === 'en' && (
@@ -183,7 +183,7 @@ export function ResultList({ results, keyword }: ResultListProps) {
         <div className="w-16 h-16 bg-drac-accent/10 rounded-2xl flex items-center justify-center mb-6 border border-drac-accent/20">
           <Languages size={32} className="text-drac-accent" />
         </div>
-        <h2 className="text-xl font-black text-drac-text-primary tracking-tight mb-2 uppercase">NEURAL SEARCH READY</h2>
+        <h2 className="text-lg font-black text-drac-text-primary tracking-tight mb-2 uppercase">NEURAL SEARCH READY</h2>
         <p className="text-drac-text-secondary/70 text-xs max-w-xs leading-relaxed">
           Type keywords in the search bar to access the cross-path translation matrix.
         </p>
@@ -197,7 +197,7 @@ export function ResultList({ results, keyword }: ResultListProps) {
         <div className="w-16 h-16 bg-drac-error/10 rounded-2xl flex items-center justify-center mb-6 border border-drac-error/20">
           <TableIcon size={32} className="text-drac-error opacity-50" />
         </div>
-        <h2 className="text-lg font-bold text-drac-text-primary mb-2 uppercase tracking-wide">ZERO MATCHES</h2>
+        <h2 className="text-base font-bold text-drac-text-primary mb-2 uppercase tracking-wide">ZERO MATCHES</h2>
         <p className="text-drac-text-secondary text-xs">
           No records found for <span className="text-drac-accent font-mono">"{keyword}"</span>
         </p>
