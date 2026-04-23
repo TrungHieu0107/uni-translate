@@ -110,6 +110,12 @@ pub fn format(tokens: Vec<Token>) -> String {
     w.0
 }
 
+/// Convenience function to format a SQL string
+pub fn format_string(sql: &str) -> String {
+    let tokens = crate::lexer::tokenize(sql);
+    format(tokens)
+}
+
 fn do_query(s: &mut S, w: &mut W, ind: usize) {
     s.skip();
     if s.is("WITH") { s.adv(); w.p("WITH \n"); s.skip(); do_cte_list(s, w, ind); }
