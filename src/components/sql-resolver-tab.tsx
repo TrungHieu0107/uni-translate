@@ -107,7 +107,8 @@ export function SQLResolverTab() {
                <span className="text-[10px] text-drac-text-secondary italic font-medium">Format: ALIAS = TABLE_NAME (one per line)</span>
              </div>
              <textarea 
-               className="w-full h-24 p-3 bg-drac-bg-primary rounded-lg border border-drac-border font-mono text-xs focus:border-drac-accent outline-none text-drac-text-primary transition-all"
+               wrap="off"
+               className="w-full h-24 p-3 bg-drac-bg-primary rounded-lg border border-drac-border font-mono text-xs focus:border-drac-accent outline-none text-drac-text-primary transition-all whitespace-pre overflow-x-auto"
                placeholder="HANBAI = R_HANBAI_SYOHIN&#10;RHS = R_HANBAI_SYOHIN"
                value={Object.entries(tableMappings).map(([k, v]) => `${k} = ${v}`).join("\n")}
                onChange={(e) => {
@@ -145,7 +146,8 @@ export function SQLResolverTab() {
             dotColor="bg-drac-danger"
           >
             <textarea 
-              className="flex-1 p-4 bg-transparent outline-none resize-none font-mono text-xs leading-relaxed scrollbar-dracula text-drac-text-primary"
+              wrap="off"
+              className="flex-1 p-4 bg-transparent outline-none resize-none font-mono text-xs leading-relaxed scrollbar-dracula text-drac-text-primary whitespace-pre overflow-x-auto"
               placeholder="SELECT S.NAME FROM R_SYOHIN S JOIN ..."
               value={inputSql}
               onChange={(e) => setInputSql(e.target.value)}

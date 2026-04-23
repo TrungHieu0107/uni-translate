@@ -109,7 +109,8 @@ export function SQLFormatterTab() {
             dotColor="bg-drac-warning"
           >
             <textarea 
-              className="flex-1 p-6 bg-transparent outline-none resize-none font-mono text-sm leading-relaxed scrollbar-dracula text-drac-text-primary placeholder:text-drac-text-secondary/30 transition-all focus:bg-drac-bg-tertiary/10"
+              wrap="off"
+              className="flex-1 p-6 bg-transparent outline-none resize-none font-mono text-sm leading-relaxed scrollbar-dracula text-drac-text-primary placeholder:text-drac-text-secondary/30 transition-all focus:bg-drac-bg-tertiary/10 whitespace-pre overflow-x-auto"
               placeholder={`-- Paste your messy SQL here\nSELECT * FROM dbo.Employees e WHERE e.ManagerID IS NULL UNION ALL SELECT e.EmployeeID, e.Name, e.ManagerID, h.Level + 1 FROM dbo.Employees e INNER JOIN EmployeeHierarchy h ON e.ManagerID = h.EmployeeID`}
               value={inputSql}
               onChange={(e) => setInputSql(e.target.value)}

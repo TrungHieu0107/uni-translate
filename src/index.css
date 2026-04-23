@@ -86,6 +86,11 @@
     scrollbar-width: thin;
     scrollbar-color: var(--bg-tertiary) var(--bg-primary);
   }
+
+  textarea[wrap="off"] {
+    white-space: pre !important;
+    overflow-x: auto !important;
+  }
 }
 
 @layer utilities {

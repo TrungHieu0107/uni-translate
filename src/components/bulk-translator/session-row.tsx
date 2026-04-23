@@ -168,7 +168,8 @@ export const SessionRow = React.memo(({
             {session.isInputFocused || !session.inputSpans.length ? (
               <textarea
                 ref={inputRef}
-                className="flex-1 w-full bg-transparent p-3 resize-none outline-none font-mono text-sm leading-relaxed scrollbar-dracula text-drac-text-primary"
+                wrap="off"
+                className="flex-1 w-full bg-transparent p-3 resize-none outline-none font-mono text-sm leading-relaxed scrollbar-dracula text-drac-text-primary whitespace-pre overflow-x-auto"
                 placeholder={session.direction === "en_to_ja" ? "Paste English text..." : "Paste Japanese text..."}
                 value={session.input}
                 onChange={(e) => updateSession(session.id, { input: e.target.value })}

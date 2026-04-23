@@ -141,7 +141,8 @@ export function SQLVisualizerTab() {
               <span className="text-[10px] font-black uppercase tracking-[0.2em] text-drac-text-secondary">Java Logic Source</span>
             </div>
             <textarea 
-              className="flex-1 p-5 bg-transparent outline-none resize-none font-mono text-xs leading-relaxed scrollbar-dracula text-drac-text-primary"
+              wrap="off"
+              className="flex-1 p-5 bg-transparent outline-none resize-none font-mono text-xs leading-relaxed scrollbar-dracula text-drac-text-primary whitespace-pre overflow-x-auto"
               placeholder='sql.append("SELECT * FROM PRODUCT ");&#10;if(code != null) {&#10;  sql.append("WHERE CD = " + code);&#10;}'
               value={inputCode}
               onChange={(e) => setInputCode(e.target.value)}

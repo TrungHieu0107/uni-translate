@@ -110,7 +110,8 @@ export function SQLAnalyzerTab() {
             )}
           >
             <textarea 
-              className="flex-1 p-4 bg-transparent outline-none resize-none font-mono text-xs leading-relaxed scrollbar-dracula text-drac-text-primary"
+              wrap="off"
+              className="flex-1 p-4 bg-transparent outline-none resize-none font-mono text-xs leading-relaxed scrollbar-dracula text-drac-text-primary whitespace-pre overflow-x-auto"
               placeholder={`Example:
 sql.append("UKETSUKE_NO,");
 if (AllRefrectFg) {
