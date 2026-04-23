@@ -151,13 +151,11 @@ fn do_cte_list(s: &mut S, w: &mut W, ind: usize) {
         };
         w.p(&name);
         if !s.eat("AS") { break; }
-        w.p(" AS (");
+        w.p(" AS\n"); w.t(ind); w.p("(\n");
         s.skip(); if matches!(s.peek(), Some(Token::LParen)) { s.adv(); }
-        s.skip();
-        w.nlt(ind + 1);
-        do_select(s, w, ind + 1);
+        w.t(ind + 1); do_select(s, w, ind + 1);
         s.skip(); if matches!(s.peek(), Some(Token::RParen)) { s.adv(); }
-        w.nl(); w.p(")");
+        w.nl(); w.t(ind); w.p(")");
         s.skip();
         if matches!(s.peek(), Some(Token::Comma)) {
             s.adv(); w.p(","); w.nl(); s.skip();
@@ -172,7 +170,17 @@ fn do_cte_list(s: &mut S, w: &mut W, ind: usize) {
 // SELECT  (ind = indent level of the SELECT keyword itself)
 // ══════════════════════════════════════════════════════════
 fn do_select(s: &mut S, w: &mut W, ind: usize) {
-    s.skip(); if s.is("SELECT") { s.adv(); }
+    s.skip();
+    while matches!(s.peek(), Some(Token::LineComment(_))) {
+        if let Some(Token::LineComment(c)) = s.adv() {
+            w.t(ind); w.p(&c); w.nl(); s.skip();
+        }
+    }
+    if s.is("VALUES") {
+        do_values(s, w, ind);
+        return;
+    }
+    if s.is("SELECT") { s.adv(); }
     w.p("SELECT ");
     s.skip();
     if s.eat("DISTINCT") { w.p("DISTINCT "); s.skip(); }
@@ -315,8 +323,12 @@ fn do_from(s: &mut S, w: &mut W, ind: usize) {
     do_table_ref(s, w, ind + 1);
     loop {
         s.skip();
-        if s.is_any(&["INNER","LEFT","RIGHT","FULL","CROSS","JOIN"]) { do_join(s, w, ind); }
-        else { break; }
+        if let Some(Token::LineComment(c)) = s.peek().cloned() {
+            s.adv(); w.ensure_nl(); w.t(ind); w.p(&c); w.nl(); continue;
+        }
+        if s.is_any(&["INNER","LEFT","RIGHT","FULL","OUTER","CROSS","JOIN","APPLY"]) { 
+            do_join(s, w, ind); 
+        } else { break; }
     }
 }
 
@@ -324,10 +336,11 @@ fn do_table_ref(s: &mut S, w: &mut W, ind: usize) {
     s.skip();
     if matches!(s.peek(), Some(Token::LParen)) {
         s.adv(); let cl = s.close();
-        if s.has_kw(s.p, cl, &["SELECT"]) {
-            w.p("(\n"); w.t(ind + 1); do_select(s, w, ind + 1);
+        if s.has_kw(s.p, cl, &["SELECT", "VALUES"]) {
+            w.ensure_nl(); w.t(ind); w.p("(\n");
+            w.t(ind + 1); do_select(s, w, ind + 1);
             s.skip(); if matches!(s.peek(), Some(Token::RParen)) { s.adv(); }
-            w.p(")");
+            w.nl(); w.t(ind); w.p(")");
         } else {
             let r = s.inline(s.p, cl); w.p("("); w.p(&r);
             s.p = cl; if matches!(s.peek(), Some(Token::RParen)) { s.adv(); }
@@ -362,21 +375,23 @@ fn do_join(s: &mut S, w: &mut W, ind: usize) {
             jkw.push_str(&k);
         }
     }
-    w.nl(); w.t(ind); w.p(&jkw); w.p(" \n"); w.t(ind + 1);
+    w.ensure_nl(); w.t(ind); w.p(&jkw); w.nl();
 
     s.skip();
     if matches!(s.peek(), Some(Token::LParen)) {
         s.adv(); let cl = s.close();
-        if s.has_kw(s.p, cl, &["SELECT"]) {
-            w.p("(\n"); w.t(ind + 2); do_select(s, w, ind + 2);
+        if s.has_kw(s.p, cl, &["SELECT", "VALUES"]) {
+            w.t(ind + 1); w.p("(\n");
+            w.t(ind + 2); do_select(s, w, ind + 2);
             s.skip(); if matches!(s.peek(), Some(Token::RParen)) { s.adv(); }
-            w.p(")");
+            w.nl(); w.t(ind + 1); w.p(")");
         } else {
             let r = s.inline(s.p, cl); w.p("("); w.p(&r);
             s.p = cl; if matches!(s.peek(), Some(Token::RParen)) { s.adv(); }
             w.p(")");
         }
     } else {
+        w.t(ind + 1);
         w.p(&do_dotted(s));
     }
 
@@ -530,7 +545,7 @@ fn do_expr(s: &mut S, w: &mut W, ind: usize, stop: Sp) {
                                 w.p("(\n"); w.t(ind + 1);
                                 do_select(s, w, ind + 1);
                                 s.skip(); if matches!(s.peek(), Some(Token::RParen)) { s.adv(); }
-                                w.p(")");
+                                w.nl(); w.t(ind); w.p(")");
                             } else {
                                 let r = s.inline(s.p, cl); w.p("("); w.p(&r);
                                 s.p = cl; if matches!(s.peek(), Some(Token::RParen)) { s.adv(); }
@@ -595,9 +610,9 @@ fn do_expr(s: &mut S, w: &mut W, ind: usize, stop: Sp) {
             Some(Token::LParen) => {
                 s.skip(); s.adv();
                 let cl = s.close();
-                if s.has_kw(s.p, cl, &["SELECT"]) {
-                    w.p("\n"); w.t(ind + 1); w.p("(\n"); w.t(ind + 2);
-                    do_select(s, w, ind + 2);
+                if s.has_kw(s.p, cl, &["SELECT", "VALUES"]) {
+                    w.nl(); w.t(ind + 1); w.p("(\n");
+                    w.t(ind + 2); do_select(s, w, ind + 2);
                     s.skip(); if matches!(s.peek(), Some(Token::RParen)) { s.adv(); }
                     w.nl(); w.t(ind + 1); w.p(")");
                 } else {
@@ -652,7 +667,7 @@ fn do_fn(s: &mut S, w: &mut W, ind: usize) {
     if s.has_kw(s.p, cl, &["SELECT"]) {
         w.p("(\n"); w.t(ind + 1); do_select(s, w, ind + 1);
         s.skip(); if matches!(s.peek(), Some(Token::RParen)) { s.adv(); }
-        w.p(")");
+        w.nl(); w.t(ind); w.p(")");
     } else {
         let r = s.inline(s.p, cl); w.p("("); w.p(&r);
         s.p = cl; if matches!(s.peek(), Some(Token::RParen)) { s.adv(); }
