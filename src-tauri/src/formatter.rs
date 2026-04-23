@@ -127,6 +127,11 @@ fn do_query(s: &mut S, w: &mut W, ind: usize) {
         s.adv(); w.p(&c); w.nl(); s.skip();
     }
     if s.is("SELECT") { do_select(s, w, ind); }
+    else if s.is("INSERT") { do_insert(s, w, ind); }
+    else if s.is("UPDATE") { do_update(s, w, ind); }
+    else if s.is("DELETE") { do_delete(s, w, ind); }
+    else if s.is("MERGE") { do_merge(s, w, ind); }
+    
     s.skip();
     if matches!(s.peek_sig(), Some(Token::Semicolon)) { s.skip(); s.adv(); w.p(";"); }
 }
@@ -196,6 +201,88 @@ fn do_select(s: &mut S, w: &mut W, ind: usize) {
         else if s.is("ORDER")                              { do_order_by(s, w, ind); }
         else if s.is_any(&["UNION","INTERSECT","EXCEPT"])  { do_set_op(s, w, ind); }
         else { break; }
+    }
+}
+
+fn do_insert(s: &mut S, w: &mut W, ind: usize) {
+    s.adv(); // INSERT
+    w.p("INSERT ");
+    if s.eat("INTO") { w.p("INTO\n"); } else { w.nl(); }
+    w.t(ind + 1);
+    w.p(&do_dotted(s));
+    s.skip();
+    if matches!(s.peek(), Some(Token::LParen)) {
+        s.adv(); w.nl(); w.t(ind + 1); w.p("(\n");
+        do_col_list(s, w, ind + 3);
+        s.skip(); if matches!(s.peek(), Some(Token::RParen)) { s.adv(); }
+        w.t(ind + 1); w.p(")\n");
+    } else {
+        w.nl();
+    }
+    s.skip();
+    if s.is("SELECT") { do_select(s, w, ind); }
+    else if s.is("VALUES") { do_values(s, w, ind); }
+}
+
+fn do_update(s: &mut S, w: &mut W, ind: usize) {
+    s.adv(); w.p("UPDATE ");
+    w.p(&do_dotted(s)); w.nl();
+    s.skip();
+    if s.is("SET") {
+        s.adv(); w.t(ind); w.p("SET\n");
+        do_col_list(s, w, ind + 1);
+    }
+    loop {
+        s.skip();
+        if s.is("FROM") { do_from(s, w, ind); }
+        else if s.is("WHERE") { do_where(s, w, ind, "WHERE"); }
+        else { break; }
+    }
+}
+
+fn do_delete(s: &mut S, w: &mut W, ind: usize) {
+    s.adv(); w.p("DELETE ");
+    if s.eat("FROM") { w.p("FROM "); }
+    w.p(&do_dotted(s)); w.nl();
+    s.skip();
+    if s.is("WHERE") { do_where(s, w, ind, "WHERE"); }
+}
+
+fn do_merge(s: &mut S, w: &mut W, ind: usize) {
+    s.adv(); w.p("MERGE ");
+    if s.eat("INTO") { w.p("INTO "); }
+    w.p(&do_dotted(s));
+    s.skip();
+    if s.eat("USING") {
+        w.nl(); w.t(ind); w.p("USING ");
+        do_table_ref(s, w, ind + 1);
+    }
+    s.skip();
+    if s.eat("ON") {
+        w.nl(); w.t(ind); w.p("ON ");
+        do_expr(s, w, ind + 1, Sp::Sub);
+    }
+}
+
+fn do_values(s: &mut S, w: &mut W, ind: usize) {
+    if s.is("VALUES") { s.adv(); }
+    w.p("VALUES \n");
+    loop {
+        s.skip();
+        if clause_kw(s) || matches!(s.peek_sig(), Some(Token::RParen)|None) { break; }
+        w.t(ind + 1);
+        if matches!(s.peek(), Some(Token::LParen)) {
+            s.adv(); let cl = s.close();
+            let r = s.inline(s.p, cl);
+            w.p("("); w.p(&r); w.p(")");
+            s.p = cl; if matches!(s.peek(), Some(Token::RParen)) { s.adv(); }
+        } else {
+            do_expr(s, w, ind + 1, Sp::List);
+        }
+        s.skip();
+        if matches!(s.peek(), Some(Token::Comma)) {
+            s.adv(); w.p(","); w.nl();
+        } else { w.nl(); break; }
     }
 }
 
