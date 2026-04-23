@@ -13,7 +13,8 @@ interface PathCardProps {
 
 export function PathCard({ path, translations }: PathCardProps) {
   const [isExpanded, setIsExpanded] = useState(true);
-  const [copiedSql, setCopiedSql] = useState(false);
+  const [copiedRaw, setCopiedRaw] = useState(false);
+  const [copiedFormatted, setCopiedFormatted] = useState(false);
   const [copiedCols, setCopiedCols] = useState(false);
   const [showDeepAnalysis, setShowDeepAnalysis] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -108,11 +109,27 @@ export function PathCard({ path, translations }: PathCardProps) {
             </div>
             <div className="flex gap-2">
               <button 
-                className="flex items-center gap-2 px-3 py-1.5 rounded bg-drac-bg-tertiary border border-drac-border text-xs font-bold hover:border-drac-accent transition-all active:scale-95"
-                onClick={() => copyToClipboard(path.fullSql, setCopiedSql)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded bg-drac-bg-tertiary border border-drac-border text-xs font-bold hover:border-drac-accent transition-all active:scale-95 group relative"
+                onClick={() => copyToClipboard(path.fullSql, setCopiedRaw)}
+                title="Copy raw extracted SQL (as in Java append)"
               >
-                {copiedSql ? <Check size={14} className="text-drac-success" /> : <Copy size={14} />}
-                COPY SQL
+                {copiedRaw ? <Check size={14} className="text-drac-success" /> : <Copy size={14} />}
+                COPY RAW
+              </button>
+              <button 
+                className="flex items-center gap-2 px-3 py-1.5 rounded bg-drac-bg-tertiary border border-drac-border text-xs font-bold hover:border-drac-accent transition-all active:scale-95 group relative"
+                onClick={async () => {
+                  try {
+                    const formatted = await invoke<string>("format_sql", { query: path.fullSql });
+                    copyToClipboard(formatted, setCopiedFormatted);
+                  } catch (err) {
+                    copyToClipboard(path.fullSql, setCopiedFormatted);
+                  }
+                }}
+                title="Copy formatted SQL using Formatter Pro"
+              >
+                {copiedFormatted ? <Check size={14} className="text-drac-success" /> : <Code2 size={14} />}
+                COPY FORMAT
               </button>
               <button 
                 className="flex items-center gap-2 px-3 py-1.5 rounded bg-drac-bg-tertiary border border-drac-border text-xs font-bold hover:border-drac-accent transition-all active:scale-95"
@@ -153,12 +170,18 @@ export function PathCard({ path, translations }: PathCardProps) {
               <div className="relative">
                 <textarea
                   readOnly
-                  className="w-full p-3 bg-drac-bg-primary border border-drac-border rounded-lg text-xs font-mono text-drac-text-primary resize-y h-32 min-h-[80px] max-h-[500px] outline-none scrollbar-dracula whitespace-pre"
+                  wrap="off"
+                  className="w-full p-3 bg-drac-bg-primary border border-drac-border rounded-lg text-xs font-mono text-drac-text-primary resize-y h-32 min-h-[80px] max-h-[500px] outline-none scrollbar-dracula whitespace-pre overflow-x-auto"
                   value={path.fullSql}
                 />
-                {copiedSql && (
+                {copiedRaw && (
                   <div className="absolute top-4 right-4 bg-drac-success text-drac-bg-primary text-[10px] font-black px-3 py-1 rounded shadow-lg animate-bounce-in z-50 tracking-widest uppercase">
-                    SQL Copied
+                    Raw SQL Copied
+                  </div>
+                )}
+                {copiedFormatted && (
+                  <div className="absolute top-4 right-4 bg-drac-success text-drac-bg-primary text-[10px] font-black px-3 py-1 rounded shadow-lg animate-bounce-in z-50 tracking-widest uppercase">
+                    Formatted SQL Copied
                   </div>
                 )}
                 {copiedCols && (
