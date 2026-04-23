@@ -97,7 +97,10 @@ impl W {
     fn t(&mut self, n: usize)  { for _ in 0..n { self.0.push('\t'); } }
     fn nlt(&mut self, n: usize){ self.nl(); self.t(n); }
     // ensure we have a newline at end (avoid double)
-    fn ensure_nl(&mut self) { if !self.0.ends_with('\n') { self.nl(); } }
+    fn ensure_nl(&mut self) {
+        while self.0.ends_with(' ') || self.0.ends_with('\t') { self.0.pop(); }
+        if !self.0.ends_with('\n') && !self.0.is_empty() { self.nl(); }
+    }
 }
 
 // ══════════════════════════════════════════════════════════
