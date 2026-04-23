@@ -202,6 +202,9 @@ fn do_select(s: &mut S, w: &mut W, ind: usize) {
 
     loop {
         s.skip();
+        if let Some(Token::LineComment(c)) = s.peek().cloned() {
+            s.adv(); w.ensure_nl(); w.t(ind); w.p(&c); w.nl(); continue;
+        }
         if      s.is("FROM")                               { do_from(s, w, ind); }
         else if s.is("WHERE")                              { do_where(s, w, ind, "WHERE"); }
         else if s.is("HAVING")                             { do_where(s, w, ind, "HAVING"); }
@@ -361,6 +364,13 @@ fn alias(s: &mut S, w: &mut W) {
             s.skip(); s.adv();
             if has_as { w.p(" AS "); } else { w.p(" "); }
             w.p(&n);
+            s.skip();
+            if matches!(s.peek(), Some(Token::LParen)) {
+                s.adv(); let cl = s.close();
+                let r = s.inline(s.p, cl);
+                w.p("("); w.p(&r); w.p(")");
+                s.p = cl; if matches!(s.peek(), Some(Token::RParen)) { s.adv(); }
+            }
         }
         _ => {}
     }
@@ -499,9 +509,24 @@ fn do_expr(s: &mut S, w: &mut W, ind: usize, stop: Sp) {
     loop {
         s.skip();
         let sig = s.peek_sig().cloned();
+        if let Some(t) = sig.as_ref() {
+            if !first {
+                match t {
+                    Token::Dot | Token::Comma | Token::RParen | Token::Semicolon => {}
+                    Token::StringLit(_) if w.0.ends_with('N') => {}
+                    _ => {
+                        if !w.0.ends_with(' ') && !w.0.ends_with('\n') && !w.0.ends_with('\t') 
+                           && !w.0.ends_with('(') && !w.0.ends_with('.') {
+                            w.p(" ");
+                        }
+                    }
+                }
+            }
+        }
+        let sig = sig;
         if !first && stop == Sp::Col {
             if let Some(Token::Ident(_)) = sig {
-                if !join_or_clause(s) { break; }
+                if !w.0.ends_with('.') && !join_or_clause(s) { break; }
             }
         }
         match s.peek_sig().cloned() {
@@ -563,10 +588,10 @@ fn do_expr(s: &mut S, w: &mut W, ind: usize, stop: Sp) {
                     "LIKE" => { s.skip(); s.adv(); w.p(" LIKE "); do_expr(s, w, ind, Sp::Sub); break; }
                     "OVER" => {
                         s.skip(); s.adv();
-                        w.p(" OVER \n"); w.t(ind + 1);
+                        w.p(" OVER\n"); w.t(ind + 1);
                         s.skip();
                         if matches!(s.peek(), Some(Token::LParen)) {
-                            s.adv(); w.p("(\n"); w.t(ind + 2);
+                            s.adv(); w.p("(\n");
                             do_over(s, w, ind + 2);
                             s.skip(); if matches!(s.peek(), Some(Token::RParen)) { s.adv(); }
                             w.nl(); w.t(ind + 1); w.p(")");
@@ -622,21 +647,13 @@ fn do_expr(s: &mut S, w: &mut W, ind: usize, stop: Sp) {
                 }
             }
             Some(Token::Ident(name)) => {
-                first = false;
                 s.skip(); s.adv();
-                let mut full = name.clone();
-                loop {
-                    if !matches!(s.peek(), Some(Token::Dot)) { break; }
-                    s.adv();
-                    let nxt = match s.adv() { Some(t) => ts(&t), None => break };
-                    full.push('.'); full.push_str(&nxt);
-                }
-                w.p(&full);
+                w.p(&name);
                 s.skip();
                 if matches!(s.peek(), Some(Token::LParen)) { do_fn(s, w, ind); }
             }
-            Some(Token::Number(n)) => { first = false; s.skip(); s.adv(); w.p(&n); }
-            Some(Token::StringLit(n)) => { first = false; s.skip(); s.adv(); w.p(&n); }
+            Some(Token::Number(n)) => { s.skip(); s.adv(); w.p(&n); }
+            Some(Token::StringLit(n)) => { s.skip(); s.adv(); w.p(&n); }
             Some(Token::Operator(op)) => {
                 s.skip(); s.adv(); w.p(" "); w.p(&op); w.p(" ");
                 s.skip();
@@ -658,6 +675,7 @@ fn do_expr(s: &mut S, w: &mut W, ind: usize, stop: Sp) {
             Some(Token::Dot) => { s.skip(); s.adv(); w.p("."); }
             _ => { s.skip(); s.adv(); }
         }
+        first = false;
     }
 }
 
@@ -676,32 +694,43 @@ fn do_fn(s: &mut S, w: &mut W, ind: usize) {
 }
 
 fn do_over(s: &mut S, w: &mut W, ind: usize) {
-    s.skip();
-    if s.is("PARTITION") {
-        s.adv(); s.eat("BY");
-        w.p("PARTITION BY\n"); w.t(ind);
-        loop {
-            s.skip();
-            if s.is_any(&["ORDER","ROWS","RANGE"]) || matches!(s.peek_sig(), Some(Token::RParen)|None) { break; }
-            do_expr(s, w, ind, Sp::List);
-            s.skip();
-            if matches!(s.peek(), Some(Token::Comma)) { s.adv(); w.p(",\n"); w.t(ind); }
-            else { w.p(" \n"); w.t(ind); break; }
-        }
-    }
-    s.skip();
-    if s.is("ORDER") {
-        s.adv(); s.eat("BY");
-        w.p("ORDER BY\n"); w.t(ind);
-        loop {
-            s.skip();
-            if s.is_any(&["ROWS","RANGE"]) || matches!(s.peek_sig(), Some(Token::RParen)|None) { break; }
-            do_expr(s, w, ind, Sp::List);
-            s.skip();
-            if s.is_any(&["ASC","DESC"]) { let d = s.take_kw(); w.p(" "); w.p(&d); }
-            s.skip();
-            if matches!(s.peek(), Some(Token::Comma)) { s.adv(); w.p(",\n"); w.t(ind); }
-            else { w.nl(); break; }
+    loop {
+        s.skip();
+        if matches!(s.peek_sig(), Some(Token::RParen)|None) { break; }
+        if s.is("PARTITION") {
+            w.ensure_nl(); w.t(ind);
+            s.adv(); s.eat("BY");
+            w.p("PARTITION BY\n"); w.t(ind);
+            loop {
+                s.skip();
+                if s.is_any(&["ORDER","ROWS","RANGE"]) || matches!(s.peek_sig(), Some(Token::RParen)|None) { break; }
+                do_expr(s, w, ind, Sp::List);
+                s.skip();
+                if matches!(s.peek(), Some(Token::Comma)) { s.adv(); w.p(",\n"); w.t(ind); }
+                else { break; }
+            }
+        } else if s.is("ORDER") {
+            w.ensure_nl(); w.t(ind);
+            s.adv(); s.eat("BY");
+            w.p("ORDER BY\n"); w.t(ind);
+            loop {
+                s.skip();
+                if s.is_any(&["ROWS","RANGE"]) || matches!(s.peek_sig(), Some(Token::RParen)|None) { break; }
+                do_expr(s, w, ind, Sp::List);
+                s.skip();
+                if s.is_any(&["ASC","DESC"]) { let d = s.take_kw(); w.p(" "); w.p(&d); }
+                s.skip();
+                if matches!(s.peek(), Some(Token::Comma)) { s.adv(); w.p(",\n"); w.t(ind); }
+                else { break; }
+            }
+        } else if s.is_any(&["ROWS","RANGE"]) {
+            w.ensure_nl(); w.t(ind);
+            let kw = s.take_kw();
+            w.p(&kw); w.p(" ");
+            do_expr(s, w, ind, Sp::Sub);
+        } else {
+            let t = s.adv().unwrap();
+            w.p(&ts(&t)); w.p(" ");
         }
     }
 }
@@ -756,8 +785,10 @@ fn do_dotted(s: &mut S) -> String {
                 if join_or_clause(s) { break; }
                 s.skip(); s.adv(); parts.push(k);
             }
+            Some(Token::Operator(op)) if op == "*" => { s.skip(); s.adv(); parts.push("*".to_string()); }
             _ => break,
         }
+        s.skip();
         if matches!(s.peek(), Some(Token::Dot)) { s.adv(); } else { break; }
     }
     parts.join(".")
