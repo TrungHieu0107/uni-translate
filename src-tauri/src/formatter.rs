@@ -847,4 +847,199 @@ mod tests {
         assert!(formatted.contains("ON"));
         assert!(formatted.contains("Departments d"));
     }
+    #[test]
+    fn test_reproduce_bug() {
+        let sql = "SELECT * FROM (SELECT * FROM R_SYOHIN WHERE TENPPO_CD = 1) WHERE TENPPO_CD = 1";
+        let formatted = format_sql(sql);
+        println!("--- FORMATTED ---");
+        println!("{}", formatted);
+        println!("--- END ---");
+        assert!(formatted.contains("\n\t)"));
+    }
+
+    #[test]
+    fn test_join_subquery() {
+        let sql = "SELECT * FROM t1 JOIN (SELECT * FROM t2) t2 ON t1.id = t2.id";
+        let formatted = format_sql(sql);
+        assert!(formatted.contains("\n\t) t2"));
+    }
+
+    #[test]
+    fn test_in_subquery() {
+        let sql = "SELECT * FROM t1 WHERE id IN (SELECT id FROM t2)";
+        let formatted = format_sql(sql);
+        assert!(formatted.contains("\n\t)"));
+    }
+
+    #[test]
+    fn test_cte_subquery() {
+        let sql = "WITH cte AS (SELECT * FROM t1) SELECT * FROM cte";
+        let formatted = format_sql(sql);
+        assert!(formatted.contains("\n)"));
+    }
+
+    #[test]
+    fn test_complex_sql_formatting() {
+        let sql = r#"
+WITH DepartmentBudget AS (
+    -- CTE 1: ngân sách theo phòng ban từ inline VALUES
+    SELECT dept, budget
+    FROM (VALUES
+        ('IT',      500000),
+        ('HR',      200000),
+        ('Finance', 350000),
+        ('Sales',   450000)
+    ) AS BudgetTable(dept, budget)
+),
+RecursiveLevel AS (
+    -- CTE 2: đệ quy tạo level 1→5
+    SELECT 1 AS lvl
+    UNION ALL
+    SELECT lvl + 1
+    FROM RecursiveLevel
+    WHERE lvl < 5
+),
+EmployeeBase AS (
+    -- CTE 3: giả lập bảng nhân viên
+    SELECT emp_id, emp_name, dept, salary, hire_date, manager_id
+    FROM (VALUES
+        (1,  N'Nguyễn Văn An',   'IT',      95000,  '2019-03-15', NULL),
+        (2,  N'Trần Thị Bình',   'HR',      72000,  '2020-07-01', 1),
+        (3,  N'Lê Minh Cường',   'Finance', 88000,  '2018-11-20', 1),
+        (4,  N'Phạm Thị Dung',   'IT',      105000, '2021-01-10', 1),
+        (5,  N'Hoàng Văn Em',    'Sales',   67000,  '2022-05-30', 2),
+        (6,  N'Đặng Thị Phương', 'Finance', 91000,  '2017-09-05', 3),
+        (7,  N'Vũ Quốc Hùng',   'Sales',   78000,  '2020-12-15', 2),
+        (8,  N'Bùi Thị Lan',    'HR',      NULL,   '2023-02-28', 2)
+    ) AS EmpTable(emp_id, emp_name, dept, salary, hire_date, manager_id)
+)
+SELECT
+    emp.emp_id,
+    emp.emp_name,
+    emp.dept,
+
+    -- ISNULL: thay thế lương NULL
+    ISNULL(emp.salary, 0)                                           AS salary,
+
+    -- COALESCE: ưu tiên lương thực tế, fallback salary trung bình phòng
+    COALESCE(emp.salary, dept_avg.avg_salary, 50000)                AS effective_salary,
+
+    -- CASE WHEN nhiều tầng
+    CASE
+        WHEN emp.salary IS NULL                        THEN N'Chưa xác định'
+        WHEN emp.salary >= 100000                      THEN N'Senior'
+        WHEN emp.salary >= 80000                       THEN N'Mid-level'
+        WHEN emp.salary >= 60000                       THEN N'Junior'
+        ELSE                                                N'Intern'
+    END                                                             AS seniority_level,
+
+    -- IIF (shorthand CASE)
+    IIF(emp.manager_id IS NULL, N'Trưởng nhóm', N'Thành viên')     AS role_type,
+
+    -- NULLIF: tránh chia 0
+    CAST(emp.salary AS FLOAT)
+        / NULLIF(db.budget, 0) * 100                                AS salary_budget_pct,
+
+    -- TRY_CAST + FORMAT: format ngày an toàn
+    FORMAT(TRY_CAST(emp.hire_date AS DATE), 'dd/MM/yyyy', 'vi-VN') AS hire_date_fmt,
+
+    -- DATEDIFF + CASE: tính thâm niên
+    CASE
+        WHEN DATEDIFF(YEAR, TRY_CAST(emp.hire_date AS DATE), GETDATE()) >= 5
+            THEN N'Kỳ cựu (≥5 năm)'
+        WHEN DATEDIFF(YEAR, TRY_CAST(emp.hire_date AS DATE), GETDATE()) >= 3
+            THEN N'Có kinh nghiệm (3–4 năm)'
+        ELSE
+            N'Mới (<3 năm)'
+    END                                                             AS tenure_category,
+
+    -- Window function: xếp hạng lương trong phòng
+    ROW_NUMBER() OVER (
+        PARTITION BY emp.dept
+        ORDER BY ISNULL(emp.salary, 0) DESC
+    )                                                               AS salary_rank_in_dept,
+
+    -- SUM OVER: tổng lương lũy tiến theo phòng
+    SUM(ISNULL(emp.salary, 0)) OVER (
+        PARTITION BY emp.dept
+        ORDER BY ISNULL(emp.salary, 0) DESC
+        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    )                                                               AS running_salary_total,
+
+    -- Subquery scalar: đếm đồng nghiệp cùng phòng
+    (
+        SELECT COUNT(*)
+        FROM EmployeeBase e2
+        WHERE e2.dept = emp.dept
+          AND e2.emp_id <> emp.emp_id
+    )                                                               AS colleagues_count,
+
+    db.budget                                                       AS dept_budget,
+    dept_avg.avg_salary                                             AS dept_avg_salary,
+
+    -- CROSS APPLY lấy level label từ RecursiveLevel
+    lv.lvl                                                          AS computed_level,
+    CONCAT(N'Level-', lv.lvl)                                       AS level_label,
+
+    -- STRING_AGG qua subquery: danh sách đồng nghiệp
+    peer_list.names                                                  AS peer_names
+
+FROM EmployeeBase AS emp
+
+-- JOIN với CTE ngân sách
+INNER JOIN DepartmentBudget AS db
+    ON db.dept = emp.dept
+
+-- JOIN với subquery tính avg salary theo phòng
+INNER JOIN (
+    SELECT
+        dept,
+        AVG(CAST(ISNULL(salary, 0) AS FLOAT))   AS avg_salary,
+        MAX(ISNULL(salary, 0))                   AS max_salary,
+        MIN(ISNULL(salary, 0))                   AS min_salary
+    FROM EmployeeBase
+    GROUP BY dept
+) AS dept_avg
+    ON dept_avg.dept = emp.dept
+
+-- CROSS APPLY: map salary vào level 1–5 tương đối
+CROSS APPLY (
+    SELECT TOP 1 lvl
+    FROM RecursiveLevel
+    ORDER BY ABS(lvl - CAST(ISNULL(emp.salary, 50000) / 20000 AS INT)) ASC
+) AS lv
+
+-- OUTER APPLY: tổng hợp tên đồng nghiệp (có thể NULL nếu không có)
+OUTER APPLY (
+    SELECT STRING_AGG(e3.emp_name, N', ')
+               WITHIN GROUP (ORDER BY e3.emp_name) AS names
+    FROM EmployeeBase e3
+    WHERE e3.dept = emp.dept
+      AND e3.emp_id <> emp.emp_id
+) AS peer_list
+
+ORDER BY
+    emp.dept ASC,
+    salary_rank_in_dept ASC;
+"#;
+        let formatted = format_sql(sql);
+        println!("--- COMPLEX SQL FORMATTED ---");
+        println!("{}", formatted);
+        println!("--- END ---");
+    }
+
+    #[test]
+    fn test_insert_formatting() {
+        let sql = r#"
+INSERT INTO R_SALE_PRODUCT (PRODUCT_CD, STORE_CD, YUKO_DT, YUKO_END_DT, DELETE_FG)
+SELECT R.PRODUCT_CD, R.STORE_CD, R.YUKO_DT, R.YUKO_END_DT, R.DELETE_FG
+FROM (
+    SELECT RTS.PRODUCT_CD, RTS.STORE_CD, kijunDt AS YUKO_DT, ISNULL(RTS.YUKO_END_DT, '29991231') AS YUKO_END_DT, RTS.DELETE_FG
+    FROM RTS RTS
+) R
+WHERE NOT EXISTS (SELECT 1 FROM R_SALE_PRODUCT HSK WHERE HSK.PRODUCT_CD = R.PRODUCT_CD);
+"#;
+        let formatted = format_sql(sql);
+        println!("--- INSERT SQL FORMATTED ---\n{}\n--- END ---", formatted);
+    }
 }

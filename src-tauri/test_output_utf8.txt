@@ -1,0 +1,44 @@
+﻿
+running 1 test
+--- INSERT SQL FORMATTED ---
+INSERT INTO
+	R_SALE_PRODUCT
+	(
+			PRODUCT_CD,
+			STORE_CD,
+			YUKO_DT,
+			YUKO_END_DT,
+			DELETE_FG
+	)
+SELECT 
+	R.PRODUCT_CD,
+	R.STORE_CD,
+	R.YUKO_DT,
+	R.YUKO_END_DT,
+	R.DELETE_FG 
+FROM
+	(
+		SELECT 
+			RTS.PRODUCT_CD,
+			RTS.STORE_CD,
+			kijunDt  AS YUKO_DT,
+			ISNULL(RTS.YUKO_END_DT, '29991231')  AS YUKO_END_DT,
+			RTS.DELETE_FG 
+		FROM
+			RTS RTS
+	) R
+WHERE 
+	NOT EXISTS 
+		(
+			SELECT 
+				1 
+			FROM
+				R_SALE_PRODUCT HSK
+			WHERE 
+				HSK.PRODUCT_CD  = R.PRODUCT_CD
+		);
+--- END ---
+test formatter::tests::test_insert_formatting ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 15 filtered out; finished in 0.00s
+
