@@ -11,7 +11,7 @@ pub mod sql;
 
 use std::sync::Mutex;
 use state::{AppState, AppStateWrapper};
-use tauri::Manager;
+use tauri::{Manager, Emitter};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -48,6 +48,10 @@ pub fn run() {
                 
                 app_state.rebuild_dictionary(&app_handle);
                 app_state.rebuild_search_dictionary();
+                app_state.is_initialized = true;
+
+                // Notify frontend that initialization is complete
+                let _ = app_handle.emit("dictionary-ready", ());
             });
             
             Ok(())

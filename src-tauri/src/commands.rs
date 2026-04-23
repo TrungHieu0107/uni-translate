@@ -29,6 +29,7 @@ pub struct ScanResult {
 pub struct DictionaryStats {
     pub total_entries: usize,
     pub active_sheets: usize,
+    pub is_initialized: bool,
 }
 
 #[tauri::command]
@@ -157,6 +158,7 @@ pub async fn update_table_selection(
         (config_from_state(&s), DictionaryStats {
             total_entries: s.search_ja_to_en.len(),
             active_sheets: s.active_table_sheets.len(),
+            is_initialized: s.is_initialized,
         })
     };
 
@@ -177,6 +179,7 @@ pub fn get_dictionary_stats(state: State<'_, AppStateWrapper>) -> Result<Diction
     Ok(DictionaryStats {
         total_entries: s.search_ja_to_en.len(),
         active_sheets: s.active_table_sheets.len(),
+        is_initialized: s.is_initialized,
     })
 }
 

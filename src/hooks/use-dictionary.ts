@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import { listen } from "@tauri-apps/api/event";
 
 export interface SheetMeta {
   name: string;
@@ -51,33 +52,52 @@ export interface ScanResult {
 export interface DictionaryStats {
   total_entries: number;
   active_sheets: number;
+  is_initialized: boolean;
 }
 
 export function useDictionary() {
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [totalEntries, setTotalEntries] = useState(0);
   const [activeSheetsCount, setActiveSheetsCount] = useState(0);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true); // Default to true for initial load
   const [error, setError] = useState<string | null>(null);
   
   const clearError = useCallback(() => setError(null), []);
 
   const fetchFiles = useCallback(async () => {
     try {
+      setIsLoading(true);
       const loadedFiles = await invoke<FileInfo[]>("list_loaded_files");
       setFiles(loadedFiles);
       
       const stats = await invoke<DictionaryStats>("get_dictionary_stats");
       setTotalEntries(stats.total_entries);
       setActiveSheetsCount(stats.active_sheets);
+      
+      // Stop loading only when initialized
+      if (stats.is_initialized) {
+        setIsLoading(false);
+      }
     } catch (err: any) {
       console.error("Failed to fetch files", err);
       setError(err.toString());
+      setIsLoading(false); // Stop loading on error
     }
   }, []);
 
   useEffect(() => {
+    // Initial fetch
     fetchFiles();
+
+    // Listen for backend ready event (in case it was still loading)
+    const unlistenPromise = listen("dictionary-ready", () => {
+      console.log("Dictionary ready event received, refreshing...");
+      fetchFiles();
+    });
+
+    return () => {
+      unlistenPromise.then(unlisten => unlisten());
+    };
   }, [fetchFiles]);
 
   const scanExcelSheets = useCallback(async (paths: string[]): Promise<ScanResult> => {

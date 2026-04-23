@@ -70,6 +70,7 @@ pub struct AppState {
     // RUST-004: Incremental tracking
     pub sheet_owned_ja_keys: HashMap<String, Vec<String>>,
     pub sheet_owned_en_keys: HashMap<String, Vec<String>>,
+    pub is_initialized: bool,
 }
 
 impl AppState {
@@ -91,6 +92,7 @@ impl AppState {
             search_en_keys_sorted: Vec::new(),
             sheet_owned_ja_keys: HashMap::new(),
             sheet_owned_en_keys: HashMap::new(),
+            is_initialized: false,
         }
     }
 }
